@@ -6,10 +6,14 @@ The main endpoint is POST /v1/resumes/upload which accepts resume files
 in PDF, DOCX, DOC, or TXT format.
 """
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
 from typing import Dict
 import hashlib
 import uuid
+import asyncio
+
+from app.api.websocket import manager
+from app.services.parser_orchestrator import ParserOrchestrator
 
 # File type validation constants
 ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt"}
@@ -29,6 +33,9 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 # Create router with prefix and tags
 router = APIRouter(prefix="/v1/resumes", tags=["resumes"])
+
+# Create orchestrator instance for background parsing
+orchestrator = ParserOrchestrator(manager)
 
 
 def _validate_file_type(filename: str, content_type: str) -> tuple[bool, str | None]:
@@ -58,20 +65,50 @@ def _validate_file_type(filename: str, content_type: str) -> tuple[bool, str | N
     return True, None
 
 
+async def parse_resume_background(resume_id: str, filename: str, content: bytes):
+    """
+    Background task to parse resume and send progress updates.
+
+    This function runs asynchronously after a file is uploaded,
+    orchestrating the parsing pipeline and broadcasting progress
+    updates via WebSocket to connected clients.
+
+    Args:
+        resume_id: Unique identifier for this resume
+        filename: Original filename of the uploaded file
+        content: Raw file content as bytes
+
+    Note:
+        Errors are logged but not raised to prevent background task
+        failures from affecting the HTTP response.
+    """
+    try:
+        await orchestrator.parse_resume(resume_id, filename, content)
+    except Exception as e:
+        # Log error but don't raise - background task should not fail visibly
+        print(f"Background parsing error for {resume_id}: {e}")
+
+
 @router.post("/upload", status_code=202)
-async def upload_resume(file: UploadFile = File(...)) -> Dict:
+async def upload_resume(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None
+) -> Dict:
     """
     Upload a resume for parsing and processing.
 
     This endpoint accepts resume files in PDF, DOCX, DOC, or TXT format.
     Files are validated for type and size before processing begins.
-    Processing happens asynchronously, so the endpoint returns 202 Accepted.
+    Processing happens asynchronously in the background, so the endpoint
+    returns 202 Accepted. Progress updates are sent via WebSocket.
 
     Args:
         file: The uploaded resume file
+        background_tasks: FastAPI BackgroundTasks for async processing
 
     Returns:
-        dict: Contains resume_id, status, estimated_time_seconds, and file_hash
+        dict: Contains resume_id, status, estimated_time_seconds,
+              file_hash, and websocket_url
 
     Raises:
         HTTPException: 400 if file type or size validation fails
@@ -101,11 +138,25 @@ async def upload_resume(file: UploadFile = File(...)) -> Dict:
     # Generate SHA256 hash of file content for deduplication
     file_hash = hashlib.sha256(content).hexdigest()
 
-    # Return acceptance response
-    # In production, this would trigger async processing via Celery
+    # Start background parsing task
+    # BackgroundTasks is preferred for production
+    if background_tasks:
+        background_tasks.add_task(
+            parse_resume_background,
+            resume_id,
+            file.filename,
+            content
+        )
+    else:
+        # For testing without BackgroundTasks, use asyncio.create_task
+        # Note: In tests using TestClient, explicit task handling may be needed
+        asyncio.create_task(parse_resume_background(resume_id, file.filename, content))
+
+    # Return acceptance response with WebSocket URL for progress tracking
     return {
         "resume_id": resume_id,
         "status": "processing",
         "estimated_time_seconds": 30,
         "file_hash": file_hash,
+        "websocket_url": f"/ws/resumes/{resume_id}"
     }
