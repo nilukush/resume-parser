@@ -5,11 +5,12 @@ This module initializes the FastAPI application with CORS middleware,
 includes all API routers, and defines health check endpoints.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import resumes
+from app.api.websocket import manager
 
 # Create FastAPI application instance
 app = FastAPI(
@@ -31,6 +32,37 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(resumes.router)
+
+
+@app.websocket("/ws/resumes/{resume_id}")
+async def websocket_endpoint(websocket: WebSocket, resume_id: str):
+    """
+    WebSocket endpoint for real-time resume parsing updates.
+
+    This endpoint establishes a WebSocket connection for a specific resume
+    and maintains it for the duration of the parsing operation, sending
+    real-time progress updates to the client.
+
+    Args:
+        websocket: The WebSocket connection instance
+        resume_id: The unique identifier for the resume being processed
+    """
+    await manager.connect(websocket, resume_id)
+    try:
+        # Keep connection alive and handle incoming messages
+        while True:
+            data = await websocket.receive_text()
+            # Handle any client messages (like ping/pong)
+            if data == "ping":
+                await manager.send_personal_message(
+                    {"type": "pong", "message": "alive"},
+                    websocket,
+                )
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, resume_id)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket, resume_id)
 
 
 @app.get("/health")
