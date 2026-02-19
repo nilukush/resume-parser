@@ -3,8 +3,6 @@ OCR Extraction Service for ResuMate.
 
 This service extracts text from scanned PDFs using Tesseract OCR.
 It provides a fallback mechanism when regular text extraction fails.
-
-All extraction functions are async for consistency with the async architecture.
 """
 
 import io
@@ -14,6 +12,9 @@ from pdf2image import convert_from_bytes
 import pytesseract
 from PIL import Image
 
+# Minimum character count for text to be considered sufficient
+MIN_TEXT_LENGTH = 100
+
 
 class OCRExtractionError(Exception):
     """Raised when OCR text extraction fails."""
@@ -21,20 +22,20 @@ class OCRExtractionError(Exception):
     pass
 
 
-async def _is_text_sufficient(text: str) -> bool:
+def _is_text_sufficient(text: str) -> bool:
     """
-    Check if extracted text is sufficient (100+ characters).
+    Check if extracted text is sufficient.
 
     Args:
         text: The extracted text to check
 
     Returns:
-        True if text length is >= 100 characters, False otherwise
+        True if text length is >= MIN_TEXT_LENGTH, False otherwise
     """
-    return len(text) >= 100 if text else False
+    return len(text) >= MIN_TEXT_LENGTH if text else False
 
 
-async def _preprocess_image(image: Image.Image) -> Image.Image:
+def _preprocess_image(image: Image.Image) -> Image.Image:
     """
     Preprocess image for better OCR results.
 
@@ -79,7 +80,7 @@ async def _extract_with_ocr(file_path: str, file_content: Optional[bytes] = None
 
         for image in images:
             # Preprocess image for better OCR
-            preprocessed = await _preprocess_image(image)
+            preprocessed = _preprocess_image(image)
 
             # Extract text using Tesseract
             page_text = pytesseract.image_to_string(preprocessed)
@@ -88,7 +89,7 @@ async def _extract_with_ocr(file_path: str, file_content: Optional[bytes] = None
         return extracted_text.strip()
 
     except Exception as e:
-        raise OCRExtractionError(f"OCR extraction failed: {str(e)}")
+        raise OCRExtractionError(f"OCR extraction failed: {str(e)}") from e
 
 
 async def extract_text_with_ocr(
@@ -114,7 +115,7 @@ async def extract_text_with_ocr(
         OCRExtractionError: If OCR extraction fails and no sufficient regular text is available
     """
     # If regular text is provided and sufficient, return it
-    if regular_text is not None and await _is_text_sufficient(regular_text):
+    if regular_text is not None and _is_text_sufficient(regular_text):
         return regular_text
 
     # Otherwise, perform OCR extraction

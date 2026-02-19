@@ -36,28 +36,28 @@ async def test_extract_text_with_ocr_returns_string():
 @pytest.mark.asyncio
 async def test_is_text_sufficient_with_long_text():
     """Test that _is_text_sufficient returns True for 100+ character text."""
-    from app.services.ocr_extractor import _is_text_sufficient
+    from app.services.ocr_extractor import _is_text_sufficient, MIN_TEXT_LENGTH
 
-    # Create text with exactly 100 characters
-    long_text = "a" * 100
-    assert await _is_text_sufficient(long_text) is True
+    # Create text with exactly MIN_TEXT_LENGTH characters
+    long_text = "a" * MIN_TEXT_LENGTH
+    assert _is_text_sufficient(long_text) is True
 
-    # Create text with more than 100 characters
+    # Create text with more than MIN_TEXT_LENGTH characters
     longer_text = "b" * 150
-    assert await _is_text_sufficient(longer_text) is True
+    assert _is_text_sufficient(longer_text) is True
 
 
 @pytest.mark.asyncio
 async def test_is_text_sufficient_with_short_text():
     """Test that _is_text_sufficient returns False for short text."""
-    from app.services.ocr_extractor import _is_text_sufficient
+    from app.services.ocr_extractor import _is_text_sufficient, MIN_TEXT_LENGTH
 
-    # Create text with less than 100 characters
-    short_text = "a" * 99
-    assert await _is_text_sufficient(short_text) is False
+    # Create text with less than MIN_TEXT_LENGTH characters
+    short_text = "a" * (MIN_TEXT_LENGTH - 1)
+    assert _is_text_sufficient(short_text) is False
 
     # Empty text should also return False
-    assert await _is_text_sufficient("") is False
+    assert _is_text_sufficient("") is False
 
 
 @pytest.mark.asyncio
@@ -119,7 +119,7 @@ async def test_preprocess_image_converts_to_grayscale():
     mock_grayscale = MagicMock(spec=Image.Image)
     mock_image.convert.return_value = mock_grayscale
 
-    result = await _preprocess_image(mock_image)
+    result = _preprocess_image(mock_image)
 
     # Verify convert was called with 'L' (grayscale mode)
     mock_image.convert.assert_called_once_with('L')
