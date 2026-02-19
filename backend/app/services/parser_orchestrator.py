@@ -20,6 +20,7 @@ from app.models.progress import (
     CompleteProgress,
     ErrorProgress
 )
+from app.core.storage import save_parsed_resume
 
 
 class ParserOrchestrator:
@@ -81,6 +82,8 @@ class ParserOrchestrator:
             )
 
             # Stage 3: Complete
+            # Save to in-memory storage for retrieval later
+            save_parsed_resume(resume_id, parsed_data)
             await self._send_complete(resume_id, parsed_data)
 
             return parsed_data

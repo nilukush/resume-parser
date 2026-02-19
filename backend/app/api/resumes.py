@@ -7,13 +7,15 @@ in PDF, DOCX, DOC, or TXT format.
 """
 
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
-from typing import Dict
+from typing import Dict, Optional
+from pydantic import BaseModel
 import hashlib
 import uuid
 import asyncio
 
 from app.api.websocket import manager
 from app.services.parser_orchestrator import ParserOrchestrator
+from app.core.storage import get_parsed_resume, update_parsed_resume
 
 # File type validation constants
 ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt"}
@@ -36,6 +38,23 @@ router = APIRouter(prefix="/v1/resumes", tags=["resumes"])
 
 # Create orchestrator instance for background parsing
 orchestrator = ParserOrchestrator(manager)
+
+
+# Pydantic models for request/response
+class ResumeUpdateRequest(BaseModel):
+    """Request model for updating parsed resume data"""
+    personal_info: Optional[dict] = None
+    work_experience: Optional[list] = None
+    education: Optional[list] = None
+    skills: Optional[dict] = None
+
+
+class ResumeResponse(BaseModel):
+    """Response model for resume data"""
+    resume_id: str
+    status: str
+    data: Optional[dict] = None
+    message: Optional[str] = None
 
 
 def _validate_file_type(filename: str, content_type: str) -> tuple[bool, str | None]:
@@ -160,3 +179,86 @@ async def upload_resume(
         "file_hash": file_hash,
         "websocket_url": f"/ws/resumes/{resume_id}"
     }
+
+
+@router.get("/{resume_id}", response_model=ResumeResponse)
+async def get_resume(resume_id: str) -> ResumeResponse:
+    """
+    Retrieve parsed resume data by ID.
+
+    Args:
+        resume_id: Unique identifier for the resume
+
+    Returns:
+        ResumeResponse with parsed data if found
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    parsed_data = get_parsed_resume(resume_id)
+
+    if parsed_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found or still processing"
+        )
+
+    return ResumeResponse(
+        resume_id=resume_id,
+        status="complete",
+        data=parsed_data
+    )
+
+
+@router.put("/{resume_id}", response_model=ResumeResponse)
+async def update_resume(
+    resume_id: str,
+    update_data: ResumeUpdateRequest
+) -> ResumeResponse:
+    """
+    Update parsed resume data with user corrections.
+
+    Args:
+        resume_id: Unique identifier for the resume
+        update_data: Updated resume data fields
+
+    Returns:
+        ResumeResponse with updated data
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    # Get current data
+    current_data = get_parsed_resume(resume_id)
+
+    if current_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found"
+        )
+
+    # Update only provided fields
+    if update_data.personal_info is not None:
+        current_data["personal_info"].update(update_data.personal_info)
+    if update_data.work_experience is not None:
+        current_data["work_experience"] = update_data.work_experience
+    if update_data.education is not None:
+        current_data["education"] = update_data.education
+    if update_data.skills is not None:
+        current_data["skills"].update(update_data.skills)
+
+    # Save updated data
+    update_success = update_parsed_resume(resume_id, current_data)
+
+    if not update_success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update resume data"
+        )
+
+    return ResumeResponse(
+        resume_id=resume_id,
+        status="updated",
+        data=current_data,
+        message="Resume updated successfully"
+    )
