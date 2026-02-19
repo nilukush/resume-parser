@@ -7,6 +7,7 @@ These tests verify the structure and behavior of ORM models.
 import pytest
 from datetime import datetime
 from sqlalchemy import inspect
+import uuid
 
 
 @pytest.mark.asyncio
@@ -17,6 +18,16 @@ async def test_resume_model_import():
 
 
 @pytest.mark.asyncio
+async def test_all_models_import():
+    """Test that all 4 models can be imported."""
+    from app.models import Resume, ParsedResumeData, ResumeCorrection, ResumeShare
+    assert Resume is not None
+    assert ParsedResumeData is not None
+    assert ResumeCorrection is not None
+    assert ResumeShare is not None
+
+
+@pytest.mark.asyncio
 async def test_resume_model_table_name():
     """Test that Resume model has correct table name."""
     from app.models.resume import Resume
@@ -24,20 +35,25 @@ async def test_resume_model_table_name():
 
 
 @pytest.mark.asyncio
-async def test_resume_model_columns():
-    """Test that Resume model has all expected columns."""
+async def test_resume_model_primary_key_is_uuid():
+    """Test that Resume model uses UUID as primary key."""
     from app.models.resume import Resume
-    inspector = inspect(Resume)
+    pk_column = Resume.__table__.columns['id']
+    assert str(pk_column.type) == 'UUID' or 'UUID' in str(pk_column.type)
 
-    # Get all column names
+
+@pytest.mark.asyncio
+async def test_resume_model_columns():
+    """Test that Resume model has all expected columns per spec."""
+    from app.models.resume import Resume
+
     columns = [c.name for c in Resume.__table__.columns]
 
-    # Verify expected columns exist
+    # Expected columns per specification
     expected_columns = {
-        'id', 'file_name', 'file_type', 'file_size',
-        'raw_text', 'extracted_data', 'parsed_data',
-        'processing_status', 'error_message',
-        'created_at', 'updated_at'
+        'id', 'original_filename', 'file_type', 'file_size_bytes',
+        'file_hash', 'storage_path', 'processing_status', 'confidence_score',
+        'parsing_version', 'uploaded_at', 'processed_at', 'created_at', 'updated_at'
     }
 
     missing_columns = expected_columns - set(columns)
@@ -49,11 +65,14 @@ async def test_resume_model_columns():
 
 @pytest.mark.asyncio
 async def test_resume_model_required_fields():
-    """Test that Resume model has correct nullable fields."""
+    """Test that Resume model has correct nullable fields per spec."""
     from app.models.resume import Resume
 
-    # Required fields (non-nullable)
-    required_fields = ['file_name', 'file_type', 'file_size', 'processing_status']
+    # Required fields (non-nullable) per spec
+    required_fields = [
+        'original_filename', 'file_type', 'file_size_bytes',
+        'file_hash', 'storage_path'
+    ]
 
     for field in required_fields:
         column = Resume.__table__.columns[field]
@@ -62,11 +81,11 @@ async def test_resume_model_required_fields():
 
 @pytest.mark.asyncio
 async def test_resume_model_optional_fields():
-    """Test that Resume model has correct nullable fields."""
+    """Test that Resume model has correct nullable fields per spec."""
     from app.models.resume import Resume
 
-    # Optional fields (nullable)
-    optional_fields = ['raw_text', 'extracted_data', 'parsed_data', 'error_message']
+    # Optional fields (nullable) per spec
+    optional_fields = ['confidence_score', 'parsing_version', 'processed_at']
 
     for field in optional_fields:
         column = Resume.__table__.columns[field]
@@ -74,88 +93,150 @@ async def test_resume_model_optional_fields():
 
 
 @pytest.mark.asyncio
-async def test_resume_model_default_values():
-    """Test that Resume model has correct default values."""
+async def test_resume_model_file_hash_unique():
+    """Test that file_hash is unique."""
     from app.models.resume import Resume
-
-    # Check processing_status has a default
-    status_column = Resume.__table__.columns['processing_status']
-    assert status_column.default is not None, "processing_status should have a default value"
+    column = Resume.__table__.columns['file_hash']
+    assert column.unique, "file_hash should be unique"
 
 
 @pytest.mark.asyncio
-async def test_resume_model_string_constraints():
-    """Test that Resume model has correct string length constraints."""
-    from app.models.resume import Resume
-
-    # file_name should have a max length
-    file_name_column = Resume.__table__.columns['file_name']
-    assert file_name_column.type.length is not None, "file_name should have a max length"
+async def test_parsed_resume_data_model_exists():
+    """Test that ParsedResumeData model exists."""
+    from app.models.resume import ParsedResumeData
+    assert ParsedResumeData is not None
+    assert ParsedResumeData.__tablename__ == 'parsed_resume_data'
 
 
 @pytest.mark.asyncio
-async def test_resume_model_relationships():
-    """Test that Resume model has expected relationships."""
-    from app.models.resume import Resume
+async def test_parsed_resume_data_columns():
+    """Test that ParsedResumeData has all expected columns per spec."""
+    from app.models.resume import ParsedResumeData
 
-    # Check if relationships are defined (will be implemented with other models)
-    relationships = [r.key for r in inspect(Resume).relationships]
-    # For now, we expect no relationships until we add related models
-    assert isinstance(relationships, list)
+    columns = [c.name for c in ParsedResumeData.__table__.columns]
 
+    expected_columns = {
+        'id', 'resume_id', 'personal_info', 'work_experience',
+        'education', 'skills', 'confidence_scores', 'created_at', 'updated_at'
+    }
 
-@pytest.mark.asyncio
-async def test_resume_model_instance_creation():
-    """Test that Resume model instances can be created."""
-    from app.models.resume import Resume
-
-    resume = Resume(
-        file_name="test_resume.pdf",
-        file_type="application/pdf",
-        file_size=102400,
-        raw_text="Sample resume text",
-        processing_status="pending"
-    )
-
-    assert resume.file_name == "test_resume.pdf"
-    assert resume.file_type == "application/pdf"
-    assert resume.file_size == 102400
-    assert resume.raw_text == "Sample resume text"
-    assert resume.processing_status == "pending"
-    assert resume.extracted_data is None
-    assert resume.parsed_data is None
-    assert resume.error_message is None
+    missing_columns = expected_columns - set(columns)
+    assert not missing_columns, f"Missing columns: {missing_columns}"
 
 
 @pytest.mark.asyncio
-async def test_resume_model_json_fields():
-    """Test that JSON fields are properly configured."""
-    from app.models.resume import Resume
+async def test_parsed_resume_data_jsonb_fields():
+    """Test that JSONB fields are properly configured."""
+    from app.models.resume import ParsedResumeData
 
-    # Check that JSON fields use JSON type
-    json_fields = ['extracted_data', 'parsed_data']
+    jsonb_fields = ['personal_info', 'work_experience', 'education', 'skills', 'confidence_scores']
 
-    for field in json_fields:
-        column = Resume.__table__.columns[field]
-        # SQLAlchemy uses JSON or JSONB type
-        type_name = str(column.type).upper()
-        assert 'JSON' in type_name, f"Field '{field}' should be a JSON type"
+    for field in jsonb_fields:
+        column = ParsedResumeData.__table__.columns[field]
+        type_str = str(column.type).upper()
+        assert 'JSON' in type_str, f"Field '{field}' should be a JSON/JSONB type"
 
 
 @pytest.mark.asyncio
-async def test_resume_model_timestamps():
-    """Test that timestamp fields are properly configured."""
-    from app.models.resume import Resume
+async def test_resume_correction_model_exists():
+    """Test that ResumeCorrection model exists."""
+    from app.models.resume import ResumeCorrection
+    assert ResumeCorrection is not None
+    assert ResumeCorrection.__tablename__ == 'resume_corrections'
 
-    # Check created_at and updated_at exist
-    assert 'created_at' in [c.name for c in Resume.__table__.columns]
-    assert 'updated_at' in [c.name for c in Resume.__table__.columns]
+
+@pytest.mark.asyncio
+async def test_resume_correction_columns():
+    """Test that ResumeCorrection has all expected columns per spec."""
+    from app.models.resume import ResumeCorrection
+
+    columns = [c.name for c in ResumeCorrection.__table__.columns]
+
+    expected_columns = {
+        'id', 'resume_id', 'field_path', 'original_value',
+        'corrected_value', 'created_at'
+    }
+
+    assert set(columns) == expected_columns, f"Expected {expected_columns}, got {set(columns)}"
+
+
+@pytest.mark.asyncio
+async def test_resume_correction_jsonb_fields():
+    """Test that original_value and corrected_value are JSONB."""
+    from app.models.resume import ResumeCorrection
+
+    for field in ['original_value', 'corrected_value']:
+        column = ResumeCorrection.__table__.columns[field]
+        type_str = str(column.type).upper()
+        assert 'JSON' in type_str, f"Field '{field}' should be a JSON/JSONB type"
+
+
+@pytest.mark.asyncio
+async def test_resume_share_model_exists():
+    """Test that ResumeShare model exists."""
+    from app.models.resume import ResumeShare
+    assert ResumeShare is not None
+    assert ResumeShare.__tablename__ == 'resume_shares'
+
+
+@pytest.mark.asyncio
+async def test_resume_share_columns():
+    """Test that ResumeShare has all expected columns per spec."""
+    from app.models.resume import ResumeShare
+
+    columns = [c.name for c in ResumeShare.__table__.columns]
+
+    expected_columns = {
+        'id', 'resume_id', 'share_token', 'access_count',
+        'expires_at', 'is_active', 'created_at'
+    }
+
+    assert set(columns) == expected_columns, f"Expected {expected_columns}, got {set(columns)}"
+
+
+@pytest.mark.asyncio
+async def test_resume_share_token_unique():
+    """Test that share_token is unique."""
+    from app.models.resume import ResumeShare
+    column = ResumeShare.__table__.columns['share_token']
+    assert column.unique, "share_token should be unique"
+
+
+@pytest.mark.asyncio
+async def test_resume_share_default_values():
+    """Test that ResumeShare has correct default values."""
+    from app.models.resume import ResumeShare
+
+    # Check access_count defaults to 0
+    access_count_column = ResumeShare.__table__.columns['access_count']
+    assert access_count_column.default is not None, "access_count should have a default"
+
+    # Check is_active defaults to True
+    is_active_column = ResumeShare.__table__.columns['is_active']
+    assert is_active_column.default is not None, "is_active should have a default"
 
 
 @pytest.mark.asyncio
 async def test_models_module_exports():
-    """Test that models module exports Resume model."""
-    from app.models import Resume
+    """Test that models module exports all 4 models."""
+    from app.models import Resume, ParsedResumeData, ResumeCorrection, ResumeShare
 
     assert Resume is not None
     assert Resume.__tablename__ == 'resumes'
+    assert ParsedResumeData is not None
+    assert ParsedResumeData.__tablename__ == 'parsed_resume_data'
+    assert ResumeCorrection is not None
+    assert ResumeCorrection.__tablename__ == 'resume_corrections'
+    assert ResumeShare is not None
+    assert ResumeShare.__tablename__ == 'resume_shares'
+
+
+@pytest.mark.asyncio
+async def test_all_models_use_uuid_primary_key():
+    """Test that all models use UUID as primary key."""
+    from app.models import Resume, ParsedResumeData, ResumeCorrection, ResumeShare
+
+    for model in [Resume, ParsedResumeData, ResumeCorrection, ResumeShare]:
+        pk_column = model.__table__.columns['id']
+        type_str = str(pk_column.type)
+        assert 'UUID' in type_str, f"{model.__name__} should use UUID as primary key, got {type_str}"

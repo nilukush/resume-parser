@@ -1,207 +1,82 @@
-"""
-Resume database model.
-
-This module defines the Resume ORM model which represents
-a parsed resume document in the database.
-"""
-
-from datetime import datetime
-from typing import Optional
-from enum import Enum
-
-from sqlalchemy import String, Integer, Text, JSON, DateTime, Enum as SQLEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Column, String, Integer, DateTime, Numeric, Boolean
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.sql import func
+import uuid
 
 from app.core.database import Base
 
 
-class ProcessingStatus(str, Enum):
-    """
-    Enum for resume processing status.
-
-    Attributes:
-        PENDING: Resume is queued for processing
-        PROCESSING: Resume is currently being processed
-        COMPLETED: Resume has been successfully processed
-        FAILED: Resume processing failed
-    """
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 class Resume(Base):
     """
-    Resume model representing a parsed resume document.
+    Resume model representing an uploaded resume file.
 
-    This model stores the uploaded file metadata, extracted text,
-    and structured parsed data from resume parsing.
-
-    Attributes:
-        id: Primary key
-        file_name: Original filename of the uploaded resume
-        file_type: MIME type of the uploaded file
-        file_size: Size of the uploaded file in bytes
-        raw_text: Extracted raw text from the document
-        extracted_data: Raw extracted data (contact info, skills, etc.)
-        parsed_data: Fully parsed and structured resume data
-        processing_status: Current status of processing
-        error_message: Error message if processing failed
-        created_at: Timestamp when the record was created
-        updated_at: Timestamp when the record was last updated
+    This model stores the metadata and processing status of uploaded resumes.
     """
-
     __tablename__ = "resumes"
 
-    # Primary key
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    original_filename = Column(String(255), nullable=False)
+    file_type = Column(String(20), nullable=False)
+    file_size_bytes = Column(Integer, nullable=False)
+    file_hash = Column(String(64), nullable=False, unique=True)
+    storage_path = Column(String(500), nullable=False)
+    processing_status = Column(String(20), default="pending")
+    confidence_score = Column(Numeric(5, 2))
+    parsing_version = Column(String(20))
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    processed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # File metadata
-    file_name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        index=True,
-        comment="Original filename of the uploaded resume"
-    )
 
-    file_type: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        comment="MIME type of the uploaded file (e.g., application/pdf)"
-    )
+class ParsedResumeData(Base):
+    """
+    ParsedResumeData model storing structured data extracted from resumes.
 
-    file_size: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        comment="Size of the uploaded file in bytes"
-    )
+    This model contains the parsed personal information, work experience,
+    education, and skills extracted from a resume.
+    """
+    __tablename__ = "parsed_resume_data"
 
-    # Extracted content
-    raw_text: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Raw text extracted from the document"
-    )
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resume_id = Column(UUID(as_uuid=True), nullable=False)
+    personal_info = Column(JSONB, nullable=False)
+    work_experience = Column(JSONB, default=list)
+    education = Column(JSONB, default=list)
+    skills = Column(JSONB, default=dict)
+    confidence_scores = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    extracted_data: Mapped[Optional[dict]] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="Raw extracted data (contact info, skills, experience, etc.)"
-    )
 
-    parsed_data: Mapped[Optional[dict]] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="Fully parsed and structured resume data"
-    )
+class ResumeCorrection(Base):
+    """
+    ResumeCorrection model storing user corrections to parsed data.
 
-    # Processing status
-    processing_status: Mapped[ProcessingStatus] = mapped_column(
-        SQLEnum(ProcessingStatus),
-        default=ProcessingStatus.PENDING,
-        nullable=False,
-        index=True,
-        comment="Current status of resume processing"
-    )
+    This model tracks corrections made by users to the parsed resume data.
+    """
+    __tablename__ = "resume_corrections"
 
-    error_message: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Error message if processing failed"
-    )
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resume_id = Column(UUID(as_uuid=True), nullable=False)
+    field_path = Column(String(100), nullable=False)
+    original_value = Column(JSONB, nullable=False)
+    corrected_value = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        nullable=False,
-        comment="Timestamp when the record was created"
-    )
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-        nullable=False,
-        comment="Timestamp when the record was last updated"
-    )
+class ResumeShare(Base):
+    """
+    ResumeShare model for sharing resumes via public links.
 
-    def __repr__(self) -> str:
-        """String representation of the Resume model."""
-        return (
-            f"<Resume(id={self.id}, file_name='{self.file_name}', "
-            f"status='{self.processing_status}')>"
-        )
+    This model manages temporary shareable links for resume access.
+    """
+    __tablename__ = "resume_shares"
 
-    def to_dict(self) -> dict:
-        """
-        Convert the Resume model to a dictionary.
-
-        Returns:
-            dict: Dictionary representation of the resume.
-        """
-        return {
-            "id": self.id,
-            "file_name": self.file_name,
-            "file_type": self.file_type,
-            "file_size": self.file_size,
-            "raw_text": self.raw_text,
-            "extracted_data": self.extracted_data,
-            "parsed_data": self.parsed_data,
-            "processing_status": self.processing_status.value if isinstance(
-                self.processing_status, ProcessingStatus
-            ) else self.processing_status,
-            "error_message": self.error_message,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
-    @property
-    def is_completed(self) -> bool:
-        """Check if the resume processing is completed."""
-        return self.processing_status == ProcessingStatus.COMPLETED
-
-    @property
-    def is_failed(self) -> bool:
-        """Check if the resume processing has failed."""
-        return self.processing_status == ProcessingStatus.FAILED
-
-    @property
-    def is_processing(self) -> bool:
-        """Check if the resume is currently being processed."""
-        return self.processing_status == ProcessingStatus.PROCESSING
-
-    @property
-    def is_pending(self) -> bool:
-        """Check if the resume is pending processing."""
-        return self.processing_status == ProcessingStatus.PENDING
-
-    def mark_as_processing(self) -> None:
-        """Mark the resume as currently being processed."""
-        self.processing_status = ProcessingStatus.PROCESSING
-        self.updated_at = datetime.utcnow()
-
-    def mark_as_completed(self, parsed_data: Optional[dict] = None) -> None:
-        """
-        Mark the resume as successfully processed.
-
-        Args:
-            parsed_data: Optional parsed data to set.
-        """
-        self.processing_status = ProcessingStatus.COMPLETED
-        self.updated_at = datetime.utcnow()
-        if parsed_data is not None:
-            self.parsed_data = parsed_data
-
-    def mark_as_failed(self, error_message: str) -> None:
-        """
-        Mark the resume as failed with an error message.
-
-        Args:
-            error_message: The error message describing the failure.
-        """
-        self.processing_status = ProcessingStatus.FAILED
-        self.error_message = error_message
-        self.updated_at = datetime.utcnow()
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resume_id = Column(UUID(as_uuid=True), nullable=False)
+    share_token = Column(String(64), unique=True, nullable=False)
+    access_count = Column(Integer, default=0)
+    expires_at = Column(DateTime(timezone=True))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

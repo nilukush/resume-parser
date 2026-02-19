@@ -111,7 +111,9 @@ def main():
         ("app/core/database.py", "Base"),
         ("app/core/database.py", "DatabaseManager"),
         ("app/models/resume.py", "Resume"),
-        ("app/models/resume.py", "ProcessingStatus"),
+        ("app/models/resume.py", "ParsedResumeData"),
+        ("app/models/resume.py", "ResumeCorrection"),
+        ("app/models/resume.py", "ResumeShare"),
     ]
     for filepath, class_name in class_checks:
         if not validate_class_exists(base_path / filepath, class_name):

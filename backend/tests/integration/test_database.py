@@ -42,24 +42,40 @@ async def test_config_module_imports():
 
 @pytest.mark.asyncio
 async def test_resume_model_exists():
-    """Test that Resume model exists and has expected fields."""
+    """Test that Resume model exists and has expected fields per spec."""
     from app.models.resume import Resume
     assert hasattr(Resume, '__tablename__')
     assert Resume.__tablename__ == 'resumes'
-    # Check for expected columns
+    # Check for expected columns per specification
     columns = [c.name for c in Resume.__table__.columns]
     expected_columns = [
-        'id', 'file_name', 'file_type', 'file_size',
-        'raw_text', 'extracted_data', 'parsed_data',
-        'processing_status', 'error_message',
-        'created_at', 'updated_at'
+        'id', 'original_filename', 'file_type', 'file_size_bytes',
+        'file_hash', 'storage_path', 'processing_status', 'confidence_score',
+        'parsing_version', 'uploaded_at', 'processed_at', 'created_at', 'updated_at'
     ]
     for col in expected_columns:
         assert col in columns, f"Expected column '{col}' not found in Resume model"
 
 
 @pytest.mark.asyncio
-async def test_models_init_exports():
-    """Test that models __init__.py exports Resume model."""
-    from app.models import Resume
+async def test_all_models_exist():
+    """Test that all 4 models exist."""
+    from app.models import Resume, ParsedResumeData, ResumeCorrection, ResumeShare
     assert Resume is not None
+    assert Resume.__tablename__ == 'resumes'
+    assert ParsedResumeData is not None
+    assert ParsedResumeData.__tablename__ == 'parsed_resume_data'
+    assert ResumeCorrection is not None
+    assert ResumeCorrection.__tablename__ == 'resume_corrections'
+    assert ResumeShare is not None
+    assert ResumeShare.__tablename__ == 'resume_shares'
+
+
+@pytest.mark.asyncio
+async def test_models_init_exports():
+    """Test that models __init__.py exports all 4 models."""
+    from app.models import Resume, ParsedResumeData, ResumeCorrection, ResumeShare
+    assert Resume is not None
+    assert ParsedResumeData is not None
+    assert ResumeCorrection is not None
+    assert ResumeShare is not None
