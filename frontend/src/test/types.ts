@@ -5,3 +5,5 @@ declare global {
     interface Matchers extends TestingLibraryMatchers<any, any> {}
   }
 }
+
+export {}
