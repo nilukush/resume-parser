@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
+export type WebSocketStage = 'text_extraction' | 'nlp_parsing' | 'ai_enhancement' | 'complete' | 'error'
+
 export interface WebSocketMessage {
   type: string
-  stage?: string
+  resume_id?: string
+  stage?: WebSocketStage | string
   progress?: number
   status?: string
   estimated_seconds_remaining?: number

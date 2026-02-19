@@ -1,4 +1,3 @@
-import React from 'react'
 import { Check, Clock, AlertCircle } from 'lucide-react'
 
 interface ProcessingStageProps {
