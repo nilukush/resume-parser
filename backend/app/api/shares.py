@@ -6,9 +6,11 @@ This module provides endpoints for managing resume share links, including:
 - Retrieving share details
 - Revoking shares
 - Public access to shared resumes
+- Export functionality (PDF, WhatsApp, Telegram, Email)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import Response as FastAPIResponse
 from typing import Dict, Optional
 from pydantic import BaseModel
 
@@ -21,6 +23,16 @@ from app.core.share_storage import (
 )
 from app.core.storage import get_parsed_resume
 from app.core.config import settings
+from app.services.export_service import (
+    generate_pdf,
+    generate_whatsapp_link,
+    generate_telegram_link,
+    generate_email_link,
+)
+
+
+# Default base URL for share links if not configured
+DEFAULT_BASE_URL = "http://localhost:3000"
 
 
 # Create router with prefix and tags
@@ -266,4 +278,164 @@ async def get_public_share(share_token: str) -> Dict:
         "education": resume_data.get("education", []),
         "skills": resume_data.get("skills", {}),
         "confidence_scores": resume_data.get("confidence_scores", {})
+    }
+
+
+# Export response models
+class WhatsAppExportResponse(BaseModel):
+    """Response model for WhatsApp export"""
+    whatsapp_url: str
+
+
+class TelegramExportResponse(BaseModel):
+    """Response model for Telegram export"""
+    telegram_url: str
+
+
+class EmailExportResponse(BaseModel):
+    """Response model for email export"""
+    mailto_url: str
+
+
+@router.get("/v1/resumes/{resume_id}/export/pdf")
+async def export_resume_pdf(resume_id: str) -> FastAPIResponse:
+    """
+    Export a resume as a PDF file.
+
+    This endpoint generates a PDF document from the parsed resume data,
+    including personal information, work experience, education, and skills.
+
+    Args:
+        resume_id: Unique identifier for the resume to export
+
+    Returns:
+        PDF file as binary response with application/pdf content-type
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    # Get resume data
+    resume_data = get_parsed_resume(resume_id)
+    if resume_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found"
+        )
+
+    # Generate PDF
+    pdf_bytes = generate_pdf(resume_data)
+
+    # Get filename from resume data
+    personal_info = resume_data.get("personal_info", {})
+    name = personal_info.get("full_name", "resume").replace(" ", "_")
+    filename = f"{name}_resume.pdf"
+
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.get("/v1/resumes/{resume_id}/export/whatsapp", response_model=WhatsAppExportResponse)
+async def export_resume_whatsapp(resume_id: str) -> Dict:
+    """
+    Generate a WhatsApp share link for a resume.
+
+    This endpoint creates a WhatsApp URL that pre-fills a message
+    with the resume content.
+
+    Args:
+        resume_id: Unique identifier for the resume to export
+
+    Returns:
+        dict: Contains whatsapp_url
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    # Get resume data
+    resume_data = get_parsed_resume(resume_id)
+    if resume_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found"
+        )
+
+    # Generate WhatsApp link
+    base_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else DEFAULT_BASE_URL
+    whatsapp_url = generate_whatsapp_link(resume_data, base_url)
+
+    return {
+        "whatsapp_url": whatsapp_url
+    }
+
+
+@router.get("/v1/resumes/{resume_id}/export/telegram", response_model=TelegramExportResponse)
+async def export_resume_telegram(resume_id: str) -> Dict:
+    """
+    Generate a Telegram share link for a resume.
+
+    This endpoint creates a Telegram URL that pre-fills a message
+    with the resume content.
+
+    Args:
+        resume_id: Unique identifier for the resume to export
+
+    Returns:
+        dict: Contains telegram_url
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    # Get resume data
+    resume_data = get_parsed_resume(resume_id)
+    if resume_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found"
+        )
+
+    # Generate Telegram link
+    base_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else DEFAULT_BASE_URL
+    telegram_url = generate_telegram_link(resume_data, base_url)
+
+    return {
+        "telegram_url": telegram_url
+    }
+
+
+@router.get("/v1/resumes/{resume_id}/export/email", response_model=EmailExportResponse)
+async def export_resume_email(resume_id: str) -> Dict:
+    """
+    Generate an email mailto link for sharing a resume.
+
+    This endpoint creates a mailto URL that pre-fills the subject and body
+    with resume information.
+
+    Args:
+        resume_id: Unique identifier for the resume to export
+
+    Returns:
+        dict: Contains mailto_url
+
+    Raises:
+        HTTPException: 404 if resume not found
+    """
+    # Get resume data
+    resume_data = get_parsed_resume(resume_id)
+    if resume_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume {resume_id} not found"
+        )
+
+    # Generate email link
+    base_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else DEFAULT_BASE_URL
+    mailto_url = generate_email_link(resume_data, base_url)
+
+    return {
+        "mailto_url": mailto_url
     }
