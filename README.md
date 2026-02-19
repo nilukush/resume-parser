@@ -9,6 +9,7 @@ An intelligent resume parsing platform that extracts structured data from resume
 - **Database:** PostgreSQL with JSONB
 - **AI/ML:** Tesseract OCR, spaCy NLP, OpenAI GPT-4
 - **Deployment:** Railway (backend), Vercel (frontend)
+- **Testing:** Pytest (backend), Vitest (frontend)
 
 ## Features
 
@@ -16,9 +17,11 @@ An intelligent resume parsing platform that extracts structured data from resume
 - Real-time parsing progress via WebSocket
 - NLP-based entity extraction
 - Confidence scoring
-- AI enhancement (coming soon)
-- Review & edit capabilities (coming soon)
-- Share & export (coming soon)
+- Review and edit parsed data
+- **Shareable links** with configurable expiration
+- **Export to PDF** with professional formatting
+- **Social sharing** (WhatsApp, Telegram, Email)
+- Access tracking and share revocation
 
 ## Project Structure
 
@@ -28,16 +31,21 @@ resume-parser/
 |   |-- app/
 |   |   |-- api/      # API routes & WebSocket handlers
 |   |   |-- models/   # SQLAlchemy models & progress types
-|   |   |-- services/ # Business logic (parser, orchestrator)
+|   |   |-- services/ # Business logic (parser, orchestrator, export)
+|   |   |-- core/     # Storage, config, database
 |   |   `-- main.py   # FastAPI app entry
 |   |-- tests/
+|   |   |-- unit/     # Unit tests
+|   |   |-- integration/  # Integration tests
+|   |   `-- e2e/      # End-to-end tests
 |   `-- requirements.txt
 |-- frontend/         # React application
 |   |-- src/
 |   |   |-- components/ # React components
 |   |   |-- pages/      # Page components
 |   |   |-- hooks/      # Custom React hooks (WebSocket)
-|   |   `-- lib/
+|   |   |-- services/   # API client
+|   |   `-- lib/        # Utilities
 |   `-- package.json
 `-- docs/
     `-- plans/
@@ -70,8 +78,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Backend will be available at http://localhost:8000
 
-WebSocket endpoint: `ws://localhost:8000/ws/resumes/{resume_id}`
-
 ### Frontend Setup
 
 ```bash
@@ -95,13 +101,14 @@ Frontend will be available at http://localhost:3000
 **Backend:**
 ```bash
 cd backend
+source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
 **Frontend:**
 ```bash
 cd frontend
-npm test
+npm test -- --run
 npm run type-check
 ```
 
@@ -109,8 +116,8 @@ npm run type-check
 
 1. **Upload** - Upload resume (PDF, DOCX, DOC, TXT) at http://localhost:3000
 2. **Processing** - Watch real-time parsing progress via WebSocket
-3. **Review** - (Coming soon) Review extracted data with confidence scores
-4. **Share** - (Coming soon) Export and share parsed data
+3. **Review** - Review extracted data with confidence scores, make corrections
+4. **Share** - Create shareable links, export to PDF, or share via social media
 
 ## WebSocket Communication
 
@@ -130,6 +137,87 @@ ws://localhost:8000/ws/resumes/{resume_id}
 }
 ```
 
+## Share and Export API
+
+### Create Shareable Link
+
+```http
+POST /v1/resumes/{resume_id}/share
+```
+
+**Response:**
+```json
+{
+  "share_token": "uuid-v4-token",
+  "share_url": "http://localhost:3000/share/uuid-v4-token",
+  "expires_at": "2026-03-20T12:00:00"
+}
+```
+
+### Export Resume
+
+**PDF:**
+```http
+GET /v1/resumes/{resume_id}/export/pdf
+```
+Returns PDF file with `Content-Type: application/pdf`
+
+**WhatsApp:**
+```http
+GET /v1/resumes/{resume_id}/export/whatsapp
+```
+```json
+{
+  "whatsapp_url": "https://wa.me/?text=..."
+}
+```
+
+**Telegram:**
+```http
+GET /v1/resumes/{resume_id}/export/telegram
+```
+```json
+{
+  "telegram_url": "https://t.me/share/url?url=&text=..."
+}
+```
+
+**Email:**
+```http
+GET /v1/resumes/{resume_id}/export/email
+```
+```json
+{
+  "mailto_url": "mailto:?subject=...&body=..."
+}
+```
+
+### Public Share Access
+
+```http
+GET /v1/share/{share_token}
+```
+
+Returns resume data without authentication. Status codes:
+- `200` - Success
+- `403` - Share has been revoked
+- `404` - Share not found
+- `410` - Share has expired
+
+### Revoke Share
+
+```http
+DELETE /v1/resumes/{resume_id}/share
+```
+
+**Response:**
+```json
+{
+  "message": "Share revoked successfully",
+  "resume_id": "resume-id"
+}
+```
+
 ## Environment Variables
 
 **Backend (.env):**
@@ -142,6 +230,17 @@ ws://localhost:8000/ws/resumes/{resume_id}
 **Frontend (.env):**
 - `VITE_API_BASE_URL` - Backend API base URL
 - `VITE_WS_BASE_URL` - WebSocket base URL
+
+## Test Results
+
+### Backend Tests: 120/120 Passing
+- Unit tests: 67 tests
+- Integration tests: 50 tests
+- E2E tests: 4 tests
+
+### Frontend Tests: 31/31 Passing
+- Component tests: 31 tests
+- Type check: Passed (TypeScript strict mode)
 
 ## License
 
