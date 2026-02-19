@@ -9,7 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api import resumes
+from app.api import resumes, shares
 from app.api.websocket import manager
 
 # Create FastAPI application instance
@@ -32,6 +32,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(resumes.router)
+app.include_router(shares.router)
 
 
 @app.websocket("/ws/resumes/{resume_id}")
