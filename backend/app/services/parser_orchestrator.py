@@ -96,6 +96,11 @@ class ParserOrchestrator:
             # Stage 4: Complete
             # Save to in-memory storage for retrieval later
             save_parsed_resume(resume_id, parsed_data)
+
+            # Wait a moment for WebSocket connection to establish
+            # This handles the race condition where parsing completes before client connects
+            await asyncio.sleep(0.5)
+
             await self._send_complete(resume_id, parsed_data)
 
             return parsed_data

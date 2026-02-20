@@ -50,6 +50,7 @@ class ShareCreateResponse(BaseModel):
 class ShareDetailsResponse(BaseModel):
     """Response model for share details"""
     share_token: str
+    share_url: str
     resume_id: str
     created_at: str
     expires_at: str
@@ -117,8 +118,8 @@ async def create_resume_share(resume_id: str) -> Dict:
     # Create the share
     share_data = create_share(resume_id)
 
-    # Construct share URL
-    share_url = f"{settings.allowed_origins_list[0]}/share/{share_data['share_token']}"
+    # Construct share URL with /shared/ prefix for public access
+    share_url = f"{settings.allowed_origins_list[0]}/shared/{share_data['share_token']}"
 
     return {
         "share_token": share_data["share_token"],
@@ -162,8 +163,12 @@ async def get_resume_share(resume_id: str) -> Dict:
             detail=f"Share not found"
         )
 
+    # Construct share URL with /shared/ prefix for public access
+    share_url = f"{settings.allowed_origins_list[0]}/shared/{share['share_token']}"
+
     return {
         "share_token": share["share_token"],
+        "share_url": share_url,
         "resume_id": share["resume_id"],
         "created_at": share["created_at"],
         "expires_at": share["expires_at"],
@@ -398,9 +403,20 @@ async def export_resume_telegram(resume_id: str) -> Dict:
             detail=f"Resume {resume_id} not found"
         )
 
-    # Generate Telegram link
+    # Get or create share for the resume to obtain share URL
+    share_token = get_share_token_by_resume_id(resume_id)
+    if not share_token:
+        # Share doesn't exist, create it first
+        from app.core.share_storage import create_share
+        share_data = create_share(resume_id)
+        share_token = share_data["share_token"]
+
+    # Construct share URL
     base_url = settings.allowed_origins_list[0] if settings.allowed_origins_list else DEFAULT_BASE_URL
-    telegram_url = generate_telegram_link(resume_data, base_url)
+    share_url = f"{base_url}/shared/{share_token}"
+
+    # Generate Telegram link with share URL
+    telegram_url = generate_telegram_link(resume_data, share_url, base_url)
 
     return {
         "telegram_url": telegram_url

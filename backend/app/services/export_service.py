@@ -286,32 +286,32 @@ def generate_whatsapp_link(resume_data: Dict, base_url: str = DEFAULT_BASE_URL) 
     return f"https://wa.me/?text={encoded_message}"
 
 
-def generate_telegram_link(resume_data: Dict, base_url: str = DEFAULT_BASE_URL) -> str:
+def generate_telegram_link(resume_data: Dict, share_url: str, base_url: str = DEFAULT_BASE_URL) -> str:
     """
     Generate a Telegram share link for a resume.
 
-    Creates a Telegram URL that pre-fills a message with a link to the shared resume.
+    Creates a Telegram URL that shares the resume link with an optional intro message.
 
     Args:
         resume_data: Parsed resume data dictionary
+        share_url: The public share URL for the resume (e.g., https://localhost:3000/shared/xxx)
         base_url: Base URL for the application (used for constructing share links)
 
     Returns:
         Telegram share URL (t.me format)
     """
-    # Format resume as text
-    resume_text = format_resume_text(resume_data)
-
-    # Create a concise message
+    # Create a concise intro message
     personal_info = resume_data.get("personal_info", {})
     name = personal_info.get("full_name", "A candidate")
-    message = f"Check out {name}'s resume:\n\n{resume_text}"
+    intro_text = f"Check out {name}'s resume!"
 
-    # URL encode the message
-    encoded_message = quote(message)
+    # URL encode both parameters
+    encoded_intro = quote(intro_text)
+    encoded_url = quote(share_url)
 
-    # Return Telegram URL
-    return f"https://t.me/share/url?url=&text={encoded_message}"
+    # Return Telegram URL with proper format
+    # Telegram share format: https://t.me/share/url?url={URL}&text={text}
+    return f"https://t.me/share/url?url={encoded_url}&text={encoded_intro}"
 
 
 def generate_email_link(resume_data: Dict, base_url: str = DEFAULT_BASE_URL) -> str:

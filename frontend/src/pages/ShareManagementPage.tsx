@@ -1,3 +1,18 @@
+/**
+ * ShareManagementPage.tsx
+ *
+ * OWNER VIEW: This page is for the resume owner managing their share settings.
+ *
+ * Route: /share/{resume_id}
+ *
+ * Features:
+ * - Shareable link card (with public URL format: /shared/{share_token})
+ * - "Back to Review" navigation
+ * - Share settings (expiry, access count, revoke)
+ * - Export buttons (PDF, WhatsApp, Telegram, Email)
+ * - Resume preview (what others will see)
+ */
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -14,13 +29,7 @@ import ShareLinkCard from '../components/ShareLinkCard';
 import ExportButtons from '../components/ExportButtons';
 import ShareSettings from '../components/ShareSettings';
 
-// Helper to check if string looks like a UUID (share_token)
-function isUUID(str: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(str);
-}
-
-export default function SharePage() {
+export default function ShareManagementPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -31,64 +40,36 @@ export default function SharePage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [revokeLoading, setRevokeLoading] = useState(false);
 
-  // isOwnerMode: true when user is managing their own share (from ReviewPage)
-  // false when viewing a public share link
-  const [isOwnerMode, setIsOwnerMode] = useState(false);
-
   useEffect(() => {
     if (id) {
-      // Determine if this is owner mode or public mode based on URL format
-      // If id is a UUID format, it's a share_token (public mode)
-      // Otherwise, it's a resume_id (owner mode)
-      const isUuid = isUUID(id);
-      setIsOwnerMode(!isUuid);
-      loadShareData(id, !isUuid);
+      loadShareManagementData(id);
     }
   }, [id]);
 
-  const loadShareData = async (idParam: string, asOwner: boolean) => {
+  const loadShareManagementData = async (resumeId: string) => {
     try {
       setLoading(true);
       setError(null);
 
-      if (asOwner) {
-        // OWNER MODE: User is managing their own share
-        // Try to load share details first
-        let shareResponse;
-        try {
-          shareResponse = await resumeAPI.getShare(idParam);
-        } catch (shareErr) {
-          // Share doesn't exist yet, create it
-          console.log('Share not found, creating new share...');
-          await resumeAPI.createShare(idParam);
-          // Get the full share details after creation
-          shareResponse = await resumeAPI.getShare(idParam);
-        }
-        setShareData(shareResponse);
+      // Try to load share details first
+      let shareResponse;
+      try {
+        shareResponse = await resumeAPI.getShare(resumeId);
+      } catch (shareErr) {
+        // Share doesn't exist yet, create it
+        console.log('Share not found, creating new share...');
+        await resumeAPI.createShare(resumeId);
+        // Get the full share details after creation
+        shareResponse = await resumeAPI.getShare(resumeId);
+      }
+      setShareData(shareResponse);
 
-        // Load resume data
-        const resumeResponse = await resumeAPI.getResume(idParam);
-        if (resumeResponse.data) {
-          setResumeData(resumeResponse.data);
-        } else {
-          setError('No resume data available');
-        }
+      // Load resume data
+      const resumeResponse = await resumeAPI.getResume(resumeId);
+      if (resumeResponse.data) {
+        setResumeData(resumeResponse.data);
       } else {
-        // PUBLIC MODE: User viewing a shared resume via share token
-        // Fetch public share data directly
-        const publicData = await resumeAPI.getPublicShare(idParam);
-
-        // Convert public data format to ParsedResumeData format
-        setResumeData({
-          personal_info: publicData.personal_info,
-          work_experience: publicData.work_experience,
-          education: publicData.education,
-          skills: publicData.skills,
-          confidence_scores: publicData.confidence_scores,
-        });
-
-        // For public mode, we don't have share management data
-        setShareData(null);
+        setError('No resume data available');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load share data');
@@ -101,9 +82,8 @@ export default function SharePage() {
     if (!id) return;
     try {
       setExportLoading(true);
-      // Use resume_id from shareData for exports
-      const resumeId = shareData?.resume_id || id;
-      const blob = await resumeAPI.exportPdf(resumeId);
+      // Use resume_id for exports
+      const blob = await resumeAPI.exportPdf(id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -123,8 +103,7 @@ export default function SharePage() {
     if (!id) return;
     try {
       setExportLoading(true);
-      const resumeId = shareData?.resume_id || id;
-      const response = await resumeAPI.exportWhatsapp(resumeId);
+      const response = await resumeAPI.exportWhatsapp(id);
       window.open(response.whatsapp_url, '_blank');
     } catch (err) {
       console.error('Failed to export WhatsApp:', err);
@@ -137,8 +116,7 @@ export default function SharePage() {
     if (!id) return;
     try {
       setExportLoading(true);
-      const resumeId = shareData?.resume_id || id;
-      const response = await resumeAPI.exportTelegram(resumeId);
+      const response = await resumeAPI.exportTelegram(id);
       window.open(response.telegram_url, '_blank');
     } catch (err) {
       console.error('Failed to export Telegram:', err);
@@ -151,8 +129,7 @@ export default function SharePage() {
     if (!id) return;
     try {
       setExportLoading(true);
-      const resumeId = shareData?.resume_id || id;
-      const response = await resumeAPI.exportEmail(resumeId);
+      const response = await resumeAPI.exportEmail(id);
       window.open(response.mailto_url, '_blank');
     } catch (err) {
       console.error('Failed to export Email:', err);
@@ -167,7 +144,7 @@ export default function SharePage() {
       setRevokeLoading(true);
       await resumeAPI.revokeShare(shareData.resume_id);
       // Reload share data
-      await loadShareData(shareData.resume_id, true);
+      await loadShareManagementData(shareData.resume_id);
     } catch (err) {
       console.error('Failed to revoke share:', err);
     } finally {
@@ -180,7 +157,7 @@ export default function SharePage() {
       <div className="min-h-screen bg-gradient-to-br from-navy-900 to-navy-700 flex items-center justify-center">
         <div className="text-center text-white">
           <Loader2 className="animate-spin h-16 w-16 mx-auto mb-4" />
-          <p className="text-xl">{isOwnerMode ? 'Loading share settings...' : 'Loading shared resume...'}</p>
+          <p className="text-xl">Loading share settings...</p>
         </div>
       </div>
     );
@@ -213,30 +190,26 @@ export default function SharePage() {
         <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
           <div className="flex items-center justify-between">
             <div>
-              {isOwnerMode && (
-                <button
-                  onClick={() => navigate(`/review/${shareData?.resume_id || id}`)}
-                  className="flex items-center gap-2 text-navy-600 hover:text-navy-700 mb-4 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span className="text-sm font-medium">Back to Review</span>
-                </button>
-              )}
+              {/* Back to Review button - OWNER ONLY */}
+              <button
+                onClick={() => navigate(`/review/${shareData?.resume_id || id}`)}
+                className="flex items-center gap-2 text-navy-600 hover:text-navy-700 mb-4 transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="text-sm font-medium">Back to Review</span>
+              </button>
               <h1 className="text-4xl font-bold text-navy-900 mb-2">
-                {isOwnerMode ? 'Share Your Resume' : 'Shared Resume'}
+                Share Your Resume
               </h1>
               <p className="text-gray-600">
-                {isOwnerMode
-                  ? 'Create a shareable link and export your resume in various formats'
-                  : `${resumeData.personal_info.full_name || 'A candidate'}' shared their resume with you`
-                }
+                Create a shareable link and export your resume in various formats
               </p>
             </div>
           </div>
         </div>
 
-        {/* Share Link Card - Only show in owner mode */}
-        {isOwnerMode && shareData && (
+        {/* Share Link Card */}
+        {shareData && (
           <ShareLinkCard shareUrl={shareData.share_url} />
         )}
 
@@ -251,8 +224,8 @@ export default function SharePage() {
           />
         </div>
 
-        {/* Share Settings - Only show in owner mode */}
-        {isOwnerMode && shareData && (
+        {/* Share Settings */}
+        {shareData && (
           <div className="mt-6">
             <ShareSettings
               expiresAt={shareData.expires_at}

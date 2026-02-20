@@ -44,10 +44,10 @@ export interface Education {
 
 export interface Skills {
   technical: string[];
-  soft_skills: string[];
-  languages: string[];
+  soft: string[];
+  languages: (string | { language: string; proficiency: string })[];
   certifications: string[];
-  confidence: number;
+  confidence?: number;
 }
 
 export interface ConfidenceScores {
@@ -70,6 +70,15 @@ export interface ResumeResponse {
   status: string;
   data: ParsedResumeData | null;
   message?: string;
+}
+
+export interface PublicResumeData {
+  resume_id: string;
+  personal_info: PersonalInfo;
+  work_experience: WorkExperience[];
+  education: Education[];
+  skills: Skills;
+  confidence_scores: ConfidenceScores;
 }
 
 export interface ResumeUpdateRequest {
@@ -205,6 +214,35 @@ export class ResumeAPI {
         throw new Error('Share not found. Please create a share link first.');
       }
       throw new Error(`Failed to get share: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get public shared resume by share token
+   */
+  async getPublicShare(shareToken: string): Promise<{
+    resume_id: string;
+    personal_info: PersonalInfo;
+    work_experience: WorkExperience[];
+    education: Education[];
+    skills: Skills;
+    confidence_scores: ConfidenceScores;
+  }> {
+    const response = await fetch(`${this.baseUrl}/share/${shareToken}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Share not found or has been revoked.');
+      }
+      if (response.status === 410) {
+        throw new Error('This share link has expired.');
+      }
+      if (response.status === 403) {
+        throw new Error('This share has been revoked.');
+      }
+      throw new Error(`Failed to get shared resume: ${response.statusText}`);
     }
 
     return response.json();

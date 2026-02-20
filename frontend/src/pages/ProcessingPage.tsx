@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useWebSocket, WebSocketMessage } from '@/hooks/useWebSocket'
 import ProcessingStage from '@/components/ProcessingStage'
@@ -21,9 +21,67 @@ export default function ProcessingPage() {
   ])
   const [error, setError] = useState<string | null>(null)
   const [estimatedTime, setEstimatedTime] = useState<number>(30)
+  const hasCheckedCompletionRef = useRef(false)
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
   const wsUrl = `${import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/ws'}/resumes/${id}`
   const { connected, lastMessage } = useWebSocket(wsUrl)
+
+  // Fallback: Poll for completion if WebSocket doesn't receive messages
+  // This handles the race condition where parsing completes before WebSocket stabilizes
+  const checkCompletionStatus = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/v1'}/resumes/${id}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.status === 'complete' && data.data) {
+          // Resume is complete, redirect to review page
+          handleComplete({ data: data.data } as WebSocketMessage)
+          return true
+        }
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  useEffect(() => {
+    // If WebSocket connects but we don't receive progress after 5 seconds,
+    // check if parsing is already complete (race condition fallback)
+    if (connected && !hasCheckedCompletionRef.current) {
+      pollTimeoutRef.current = setTimeout(async () => {
+        const isComplete = await checkCompletionStatus()
+        if (!isComplete) {
+          // If not complete, set stages to in_progress as parsing is likely happening
+          setStages(prev => prev.map((s, i) =>
+            i === 0 ? { ...s, status: 'in_progress' as const, statusMessage: 'Processing...' } : s
+          ))
+        }
+        hasCheckedCompletionRef.current = true
+      }, 5000)
+    }
+
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+      }
+    }
+  }, [connected, id])
+
+  // Also check immediately if WebSocket never connects
+  useEffect(() => {
+    const immediateCheckTimeout = setTimeout(async () => {
+      if (!connected && !hasCheckedCompletionRef.current) {
+        const isComplete = await checkCompletionStatus()
+        if (isComplete) {
+          hasCheckedCompletionRef.current = true
+        }
+      }
+    }, 2000)
+
+    return () => clearTimeout(immediateCheckTimeout)
+  }, [connected, id])
 
   useEffect(() => {
     if (!lastMessage) return
@@ -102,6 +160,10 @@ export default function ProcessingPage() {
         progress: 100
       }))
     )
+
+    // Prevent multiple redirects
+    if (hasCheckedCompletionRef.current) return
+    hasCheckedCompletionRef.current = true
 
     // Redirect to review page after a short delay
     setTimeout(() => {

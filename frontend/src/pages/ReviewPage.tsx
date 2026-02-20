@@ -75,8 +75,9 @@ export default function ReviewPage() {
 
     try {
       setSharing(true);
-      // Create share first, then navigate to share page
-      await resumeAPI.createShare(id);
+      // Create share and get the share token
+      const shareResponse = await resumeAPI.createShare(id);
+      // Navigate to ShareManagementPage using resume_id (owner view)
       navigate(`/share/${id}`);
     } catch (err) {
       console.error('Failed to create share:', err);
@@ -491,14 +492,19 @@ function SkillsDisplay({ skills }: { skills: any }) {
         <div>
           <h3 className="text-lg font-semibold text-navy-900 mb-3">Languages</h3>
           <div className="flex flex-wrap gap-2">
-            {skills.languages.map((lang: string, index: number) => (
-              <span
-                key={index}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
-              >
-                {lang}
-              </span>
-            ))}
+            {skills.languages.map((lang: string | { language: string; proficiency?: string }, index: number) => {
+              // Handle both string format and object format from AI
+              const langText = typeof lang === 'string' ? lang : lang.language
+              const proficiency = typeof lang === 'object' && lang?.proficiency
+              return (
+                <span
+                  key={index}
+                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                >
+                  {langText}{proficiency && ` (${proficiency}/10)`}
+                </span>
+              )
+            })}
           </div>
         </div>
       )}
