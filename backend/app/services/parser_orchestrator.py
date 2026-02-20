@@ -4,7 +4,8 @@ Parser Orchestrator Service for ResuMate.
 This service orchestrates the resume parsing pipeline:
 1. Text Extraction - Extract text from uploaded file
 2. NLP Parsing - Extract entities using spaCy NLP
-3. Complete - Broadcast final parsed data
+3. AI Enhancement - Improve results using GPT-4 (if configured)
+4. Complete - Broadcast final parsed data
 
 Each stage broadcasts progress updates via WebSocket.
 """
@@ -14,6 +15,7 @@ from typing import Optional
 
 from app.services.text_extractor import extract_text, TextExtractionError
 from app.services.nlp_extractor import extract_entities
+from app.services.ai_extractor import enhance_with_ai
 from app.models.progress import (
     ProgressUpdate,
     ProgressStage,
@@ -39,7 +41,8 @@ class ParserOrchestrator:
         self,
         resume_id: str,
         filename: str,
-        file_content: bytes
+        file_content: bytes,
+        enable_ai: bool = True
     ) -> dict:
         """
         Parse a resume through the complete pipeline with progress updates.
@@ -48,6 +51,7 @@ class ParserOrchestrator:
             resume_id: Unique identifier for this resume
             filename: Original filename
             file_content: File bytes content
+            enable_ai: Whether to use AI enhancement (default: True)
 
         Returns:
             Parsed resume data dictionary
@@ -56,6 +60,8 @@ class ParserOrchestrator:
             TextExtractionError: If text extraction fails
             Exception: If parsing fails at any stage
         """
+        raw_text = None  # Store for AI enhancement
+
         try:
             # Stage 1: Text Extraction
             await self._send_progress(
@@ -81,7 +87,13 @@ class ParserOrchestrator:
                 resume_id, raw_text
             )
 
-            # Stage 3: Complete
+            # Stage 3: AI Enhancement (if enabled and configured)
+            if enable_ai and raw_text:
+                parsed_data = await self._enhance_with_ai_progress(
+                    resume_id, raw_text, parsed_data
+                )
+
+            # Stage 4: Complete
             # Save to in-memory storage for retrieval later
             save_parsed_resume(resume_id, parsed_data)
             await self._send_complete(resume_id, parsed_data)
@@ -197,6 +209,54 @@ class ParserOrchestrator:
                 f"NLP parsing failed: {str(e)}"
             )
             raise
+
+    async def _enhance_with_ai_progress(
+        self,
+        resume_id: str,
+        raw_text: str,
+        parsed_data: dict
+    ) -> dict:
+        """
+        Enhance parsed data using AI with progress updates.
+
+        Args:
+            resume_id: Unique identifier for this resume
+            raw_text: Original extracted text content
+            parsed_data: Initial NLP-parsed data
+
+        Returns:
+            Enhanced resume data dictionary
+        """
+        try:
+            await self._send_progress(
+                resume_id,
+                ProgressStage.AI_ENHANCEMENT,
+                70,
+                "Enhancing with AI..."
+            )
+
+            # Simulate AI processing time for better UX
+            await asyncio.sleep(0.3)
+
+            enhanced_data = await enhance_with_ai(raw_text, parsed_data)
+
+            await self._send_progress(
+                resume_id,
+                ProgressStage.AI_ENHANCEMENT,
+                100,
+                "AI enhancement complete!"
+            )
+
+            return enhanced_data
+        except Exception as e:
+            # AI enhancement is optional - log and continue with original data
+            await self._send_progress(
+                resume_id,
+                ProgressStage.AI_ENHANCEMENT,
+                100,
+                f"AI enhancement skipped: {str(e)}"
+            )
+            return parsed_data
 
     async def _send_progress(
         self,
