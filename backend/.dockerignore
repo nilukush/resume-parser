@@ -1,0 +1,80 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+*.pid
+*.log
+
+# Virtual environments
+.venv
+venv/
+*.venv
+
+# UV
+.uv/
+uv.lock
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.hypothesis
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Development files
+Dockerfile.dev
+docker-compose.yml
+docker-compose.*.yml
+
+# Vercel
+.vercel
+.vercelignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Node (if any frontend tools)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Alembic (versions will be copied separately)
+alembic/versions/*.pyc
