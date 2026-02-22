@@ -1,3 +1,17 @@
+[project]
+name = "resumate-backend"
+version = "1.0.0"
+description = "AI-Powered Resume Parser Backend"
+requires-python = ">=3.11"
+dependencies = [
+    # Dependencies are managed in requirements.txt
+    # This minimal pyproject.toml exists to satisfy Vercel's uv lock requirement
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [tool.black]
 line-length = 100
 target-version = ['py311']

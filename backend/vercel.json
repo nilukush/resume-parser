@@ -7,7 +7,9 @@
       "config": {
         "maxLambdaSize": "15mb",
         "runtime": "python3.11",
-        "pythonVersion": "3.11"
+        "pythonVersion": "3.11",
+        "installCommand": "pip install --user -r requirements.txt",
+        "buildCommand": "pip install --user -r requirements.txt"
       }
     }
   ],
@@ -16,21 +18,5 @@
       "src": "/(.*)",
       "dest": "app/main.py"
     }
-  ],
-  "installCommand": "pip install --user -r requirements.txt",
-  "buildCommand": "pip install --user -r requirements.txt",
-  "env": {
-    "DATABASE_URL": "@resumate-database",
-    "DATABASE_URL_SYNC": "@resumate-database-sync",
-    "USE_DATABASE": "true",
-    "OPENAI_API_KEY": "@openai-api-key",
-    "SECRET_KEY": "@secret-key",
-    "ENVIRONMENT": "production",
-    "ALLOWED_ORIGINS": "https://resumate-frontend.vercel.app",
-    "USE_CELERY": "false",
-    "TESSERACT_PATH": "/usr/bin/tesseract",
-    "ENABLE_OCR_FALLBACK": "true",
-    "SENTRY_DSN": "@sentry-dsn",
-    "SENTRY_ENVIRONMENT": "production"
-  }
+  ]
 }

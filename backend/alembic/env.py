@@ -1,6 +1,12 @@
 import os
 import sys
+import configparser
 from logging.config import fileConfig
+from dotenv import load_dotenv
+
+# Load .env file from backend directory
+backend_dir = os.path.dirname(os.path.dirname(__file__))
+load_dotenv(os.path.join(backend_dir, '.env'))
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -35,12 +41,25 @@ database_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"
 # Note: psycopg 3.x uses 'postgresql+psycopg://' URL
 if database_url.startswith("postgresql+asyncpg://"):
     # Convert to psycopg 3.x format for sync migrations
-    database_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    database_url_sync = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
 elif database_url.startswith("postgresql://"):
     # Plain postgresql:// URL, convert to use psycopg
-    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    database_url_sync = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+else:
+    database_url_sync = database_url
 
-config.set_main_option("sqlalchemy.url", database_url)
+# IMPORTANT: Don't set this back to config if it has special characters
+# ConfigParser fails on URL-encoded passwords with % and { }
+# Instead, we'll pass it directly to the engine
+try:
+    config.set_main_option("sqlalchemy.url", database_url_sync)
+except (ValueError, configparser.InterpolationError) as e:
+    # If ConfigParser fails (special characters in password), skip setting it
+    # The engine will use the URL directly from environment variable
+    import warnings
+    warnings.warn(f"Could not set URL in alembic.ini due to special characters: {e}")
+    # Store in environment for run_migrations_online() to use
+    os.environ["ALEMBIC_DATABASE_URL"] = database_url_sync
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -97,11 +116,20 @@ def run_migrations_online() -> None:
     # Synchronous engine for Alembic migrations
     from sqlalchemy import engine_from_config
 
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Check if we have a fallback URL from environment (ConfigParser failed)
+    fallback_url = os.environ.get("ALEMBIC_DATABASE_URL")
+
+    if fallback_url:
+        # Create engine directly from URL (bypasses config.get_section)
+        from sqlalchemy import create_engine
+        connectable = create_engine(fallback_url, poolclass=pool.NullPool)
+    else:
+        # Use standard config-based engine creation
+        connectable = engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     with connectable.connect() as connection:
         do_run_migrations(connection)
