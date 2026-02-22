@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "uv sync --frozen",
-  "installCommand": "uv sync --frozen",
+  "buildCommand": "pip install -r requirements.txt",
+  "installCommand": "pip install -r requirements.txt",
   "framework": null
 }
