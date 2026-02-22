@@ -5,12 +5,20 @@ This module initializes the FastAPI application with CORS middleware,
 includes all API routers, and defines health check endpoints.
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import logging
+from typing import Optional
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.api import resumes, shares
 from app.api.websocket import manager
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Create FastAPI application instance
 app = FastAPI(
@@ -66,20 +74,46 @@ async def websocket_endpoint(websocket: WebSocket, resume_id: str):
         manager.disconnect(websocket, resume_id)
 
 
-@app.get("/health")
-def health_check() -> dict:
+@app.get("/health", tags=["health"])
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
-    Health check endpoint.
+    Health check endpoint for monitoring and load balancers.
 
-    Returns the current health status and version of the API.
-    This endpoint is used by load balancers and monitoring systems
-    to verify the API is running.
+    Returns system status including database connectivity.
+    This endpoint is used by Render, load balancers, and monitoring systems
+    to verify the API is running and healthy.
 
     Returns:
-        dict: Health status information
+        JSONResponse: Health status with database connectivity check
+
+    Status Codes:
+        200: System is healthy (database connected)
+        503: System is unhealthy (database disconnected)
     """
-    return {
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+    from datetime import datetime
+
+    health_status = {
         "status": "healthy",
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
+        "database": "unknown",
+        "timestamp": datetime.utcnow().isoformat()
     }
+
+    # Check database connectivity
+    try:
+        # Simple query to verify database connection
+        await db.execute(text("SELECT 1"))
+        health_status["database"] = "connected"
+    except Exception as e:
+        health_status["database"] = "disconnected"
+        health_status["status"] = "unhealthy"
+        health_status["database_error"] = str(e)
+        logger.error(f"Health check failed: {e}")
+
+    # Return appropriate status code
+    status_code = 200 if health_status["status"] == "healthy" else 503
+
+    return JSONResponse(content=health_status, status_code=status_code)
