@@ -2,6 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "uv sync --frozen",
   "installCommand": "uv sync --frozen",
-  "framework": null,
-  "pythonVersion": "3.11"
+  "framework": null
 }
