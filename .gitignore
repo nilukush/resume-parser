@@ -42,3 +42,5 @@ logs/
 
 # Railway
 .volumes/
+.vercel
+.env*.local
