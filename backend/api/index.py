@@ -1,13 +1,12 @@
 """
 Vercel serverless function entry point for ResuMate API.
 
-This file serves as the adapter between Vercel's Python runtime
-and our FastAPI application. Vercel's Python runtime expects
-a handler function in the api/ directory.
+This file wraps the FastAPI application with Mangum to work
+with Vercel's serverless functions (AWS Lambda).
 """
 
+from mangum import Mangum
 from app.main import app
 
-# Vercel Python runtime looks for this handler
-# ASGI applications are supported directly
-handler = app
+# Wrap FastAPI app with Mangum for AWS Lambda compatibility
+handler = Mangum(app, lifespan="off")
