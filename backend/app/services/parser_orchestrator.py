@@ -11,7 +11,10 @@ Each stage broadcasts progress updates via WebSocket.
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, Any, Dict
+from uuid import UUID
+from datetime import datetime
+from decimal import Decimal
 
 from app.services.text_extractor import extract_text, TextExtractionError
 from app.services.nlp_extractor import extract_entities
@@ -23,6 +26,37 @@ from app.models.progress import (
     ErrorProgress
 )
 from app.core.storage import save_parsed_resume
+from app.core.config import settings
+
+
+def _serialize_for_websocket(data: Any) -> Any:
+    """
+    Recursively convert complex types to JSON-serializable formats.
+
+    This handles:
+    - UUID → str
+    - datetime → ISO format str
+    - Decimal → float
+    - Recursive dicts and lists
+
+    Args:
+        data: Data to serialize
+
+    Returns:
+        JSON-serializable version of data
+    """
+    if isinstance(data, dict):
+        return {k: _serialize_for_websocket(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_serialize_for_websocket(item) for item in data]
+    elif isinstance(data, UUID):
+        return str(data)
+    elif isinstance(data, datetime):
+        return data.isoformat()
+    elif isinstance(data, Decimal):
+        return float(data)
+    else:
+        return data
 
 
 class ParserOrchestrator:
@@ -42,6 +76,9 @@ class ParserOrchestrator:
         resume_id: str,
         filename: str,
         file_content: bytes,
+        file_hash: str = "",
+        file_size: int = 0,
+        file_type: str = "unknown",
         enable_ai: bool = True
     ) -> dict:
         """
@@ -51,6 +88,9 @@ class ParserOrchestrator:
             resume_id: Unique identifier for this resume
             filename: Original filename
             file_content: File bytes content
+            file_hash: SHA256 hash of file content
+            file_size: File size in bytes
+            file_type: File extension (pdf, docx, doc, txt)
             enable_ai: Whether to use AI enhancement (default: True)
 
         Returns:
@@ -94,12 +134,19 @@ class ParserOrchestrator:
                 )
 
             # Stage 4: Complete
-            # Save to in-memory storage for retrieval later
-            save_parsed_resume(resume_id, parsed_data)
+            # Save to storage (database or in-memory based on feature flag)
+            if settings.USE_DATABASE:
+                # Import here to avoid circular dependency
+                from app.core.database import AsyncSessionLocal
+                from app.services.storage_adapter import StorageAdapter
 
-            # Wait a moment for WebSocket connection to establish
-            # This handles the race condition where parsing completes before client connects
-            await asyncio.sleep(0.5)
+                # Save to database
+                async with AsyncSessionLocal() as db:
+                    adapter = StorageAdapter(db)
+                    await adapter.save_parsed_data(resume_id, parsed_data, ai_enhanced=enable_ai)
+            else:
+                # Save to in-memory storage
+                save_parsed_resume(resume_id, parsed_data)
 
             await self._send_complete(resume_id, parsed_data)
 
@@ -297,7 +344,10 @@ class ParserOrchestrator:
             resume_id: Unique identifier for this resume
             parsed_data: Final parsed resume data
         """
-        update = CompleteProgress(resume_id=resume_id, parsed_data=parsed_data)
+        # Serialize complex objects to JSON-compatible types
+        serializable_data = _serialize_for_websocket(parsed_data)
+
+        update = CompleteProgress(resume_id=resume_id, parsed_data=serializable_data)
         await self.websocket_manager.broadcast_to_resume(
             update.to_dict(), resume_id
         )

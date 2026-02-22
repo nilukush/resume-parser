@@ -74,9 +74,18 @@ class ConnectionManager:
             await websocket.send_json(message)
         except RuntimeError as e:
             # Connection may be closed
+            import logging
+            logging.getLogger(__name__).error(f"WebSocket RuntimeError: {e}", exc_info=True)
             print(f"Error sending personal message: {e}")
+        except TypeError as e:
+            # JSON serialization error
+            import logging
+            logging.getLogger(__name__).error(f"WebSocket serialization error: {e}", exc_info=True)
+            print(f"Serialization error: {e}")
         except Exception as e:
-            print(f"Unexpected error sending message: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"WebSocket error: {type(e).__name__}: {e}", exc_info=True)
+            print(f"Unexpected error sending message: {type(e).__name__}: {e}")
 
     async def broadcast_to_resume(self, message: dict, resume_id: str) -> None:
         """
@@ -90,12 +99,23 @@ class ConnectionManager:
             disconnected = set()
             for connection in self.active_connections[resume_id]:
                 try:
-                    await connection.send_json(message)
+                    # Check WebSocket client state before sending
+                    # CLIENT_CLOSED means the connection is no longer valid
+                    if getattr(connection, 'client_state', None) != 'DISCONNECTED':
+                        await connection.send_json(message)
+                    else:
+                        # Connection is already closed, mark for cleanup
+                        disconnected.add(connection)
                 except (RuntimeError, WebSocketDisconnect):
                     # Mark disconnected WebSockets for cleanup
                     disconnected.add(connection)
                 except Exception as e:
-                    print(f"Error broadcasting to connection: {e}")
+                    # Log with more context for debugging
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to broadcast to resume {resume_id}: {e}",
+                        exc_info=True
+                    )
                     disconnected.add(connection)
 
             # Clean up disconnected WebSockets

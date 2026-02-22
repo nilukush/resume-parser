@@ -9,20 +9,31 @@ This module provides endpoints for managing resume share links, including:
 - Export functionality (PDF, WhatsApp, Telegram, Email)
 """
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, Depends
 from fastapi.responses import Response as FastAPIResponse
 from typing import Dict, Optional
 from pydantic import BaseModel
 
+# Import both storage implementations
 from app.core.share_storage import (
-    create_share,
-    get_share,
-    increment_access,
-    revoke_share,
-    is_share_valid,
+    create_share as create_share_inmemory,
+    get_share as get_share_inmemory,
+    increment_access as increment_access_inmemory,
+    revoke_share as revoke_share_inmemory,
+    is_share_valid as is_share_valid_inmemory,
 )
-from app.core.storage import get_parsed_resume
+from app.services.database_share_storage import (
+    create_share as create_share_db,
+    get_share as get_share_db,
+    increment_access as increment_access_db,
+    revoke_share as revoke_share_db,
+    is_share_valid as is_share_valid_db,
+    get_share_token_by_resume_id as get_share_token_by_resume_id_db,
+)
+from app.core.storage import get_parsed_resume as get_parsed_resume_inmemory
+from app.services.storage_adapter import StorageAdapter
 from app.core.config import settings
+from app.core.database import get_db
 from app.services.export_service import (
     generate_pdf,
     generate_whatsapp_link,
@@ -37,6 +48,62 @@ DEFAULT_BASE_URL = "http://localhost:3000"
 
 # Create router with prefix and tags
 router = APIRouter(tags=["shares"])
+
+
+# Storage abstraction layer
+async def _create_share(resume_id: str, db=None):
+    """Create share using database or in-memory storage based on settings"""
+    if settings.USE_DATABASE and db:
+        return await create_share_db(resume_id, db)
+    return create_share_inmemory(resume_id)
+
+
+async def _get_share(share_token: str, db=None):
+    """Get share using database or in-memory storage based on settings"""
+    if settings.USE_DATABASE and db:
+        return await get_share_db(share_token, db)
+    return get_share_inmemory(share_token)
+
+
+async def _increment_access(share_token: str, db=None):
+    """Increment access using database or in-memory storage based on settings"""
+    if settings.USE_DATABASE and db:
+        return await increment_access_db(share_token, db)
+    return increment_access_inmemory(share_token)
+
+
+async def _revoke_share(share_token: str, db=None):
+    """Revoke share using database or in-memory storage based on settings"""
+    if settings.USE_DATABASE and db:
+        return await revoke_share_db(share_token, db)
+    return revoke_share_inmemory(share_token)
+
+
+async def _is_share_valid(share_token: str, db=None):
+    """Check share validity using database or in-memory storage based on settings"""
+    if settings.USE_DATABASE and db:
+        return await is_share_valid_db(share_token, db)
+    return is_share_valid_inmemory(share_token)
+
+
+async def _get_share_token_by_resume_id(resume_id: str, db=None):
+    """Get share token by resume ID using database or in-memory storage"""
+    if settings.USE_DATABASE and db:
+        return await get_share_token_by_resume_id_db(resume_id, db)
+    # In-memory implementation
+    from app.core.share_storage import _share_store
+    for token, metadata in _share_store.items():
+        if metadata.get("resume_id") == resume_id:
+            return token
+    return None
+
+
+async def _get_parsed_resume(resume_id: str, db=None):
+    """Get parsed resume using database or in-memory storage"""
+    if settings.USE_DATABASE and db:
+        adapter = StorageAdapter(db)
+        return await adapter.get_parsed_data(resume_id)
+    return get_parsed_resume_inmemory(resume_id)
 
 
 # Pydantic models for request/response
@@ -68,29 +135,8 @@ class PublicShareResponse(BaseModel):
     confidence_scores: dict
 
 
-def get_share_token_by_resume_id(resume_id: str) -> Optional[str]:
-    """
-    Find an active share token by resume_id.
-
-    This is a helper function since share_storage is indexed by token,
-    not by resume_id.
-
-    Args:
-        resume_id: The resume ID to find shares for
-
-    Returns:
-        The share token if found, None otherwise
-    """
-    from app.core.share_storage import _share_store
-
-    for token, metadata in _share_store.items():
-        if metadata.get("resume_id") == resume_id:
-            return token
-    return None
-
-
 @router.post("/v1/resumes/{resume_id}/share", status_code=202, response_model=ShareCreateResponse)
-async def create_resume_share(resume_id: str) -> Dict:
+async def create_resume_share(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Create a shareable link for a resume.
 
@@ -108,15 +154,15 @@ async def create_resume_share(resume_id: str) -> Dict:
         HTTPException: 404 if resume not found
     """
     # Verify resume exists
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
     if resume_data is None:
         raise HTTPException(
             status_code=404,
             detail=f"Resume {resume_id} not found"
         )
 
-    # Create the share
-    share_data = create_share(resume_id)
+    # Create the share using database or in-memory storage
+    share_data = await _create_share(resume_id, db)
 
     # Construct share URL with /shared/ prefix for public access
     share_url = f"{settings.allowed_origins_list[0]}/shared/{share_data['share_token']}"
@@ -129,7 +175,7 @@ async def create_resume_share(resume_id: str) -> Dict:
 
 
 @router.get("/v1/resumes/{resume_id}/share", response_model=ShareDetailsResponse)
-async def get_resume_share(resume_id: str) -> Dict:
+async def get_resume_share(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Retrieve share details for a resume.
 
@@ -147,7 +193,7 @@ async def get_resume_share(resume_id: str) -> Dict:
         HTTPException: 404 if no share exists for this resume
     """
     # Find the share token for this resume
-    share_token = get_share_token_by_resume_id(resume_id)
+    share_token = await _get_share_token_by_resume_id(resume_id, db)
 
     if not share_token:
         raise HTTPException(
@@ -156,7 +202,7 @@ async def get_resume_share(resume_id: str) -> Dict:
         )
 
     # Get share metadata
-    share = get_share(share_token)
+    share = await _get_share(share_token, db)
     if not share:
         raise HTTPException(
             status_code=404,
@@ -178,7 +224,7 @@ async def get_resume_share(resume_id: str) -> Dict:
 
 
 @router.delete("/v1/resumes/{resume_id}/share", status_code=200)
-async def revoke_resume_share(resume_id: str) -> Dict:
+async def revoke_resume_share(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Revoke a shareable link for a resume.
 
@@ -196,7 +242,7 @@ async def revoke_resume_share(resume_id: str) -> Dict:
         HTTPException: 404 if no share exists for this resume
     """
     # Find the share token for this resume
-    share_token = get_share_token_by_resume_id(resume_id)
+    share_token = await _get_share_token_by_resume_id(resume_id, db)
 
     if not share_token:
         raise HTTPException(
@@ -205,7 +251,7 @@ async def revoke_resume_share(resume_id: str) -> Dict:
         )
 
     # Revoke the share
-    revoked = revoke_share(share_token)
+    revoked = await _revoke_share(share_token, db)
 
     if not revoked:
         raise HTTPException(
@@ -220,7 +266,7 @@ async def revoke_resume_share(resume_id: str) -> Dict:
 
 
 @router.get("/v1/share/{share_token}", response_model=PublicShareResponse)
-async def get_public_share(share_token: str) -> Dict:
+async def get_public_share(share_token: str, db=Depends(get_db)) -> Dict:
     """
     Public endpoint to access a shared resume.
 
@@ -240,7 +286,7 @@ async def get_public_share(share_token: str) -> Dict:
         HTTPException: 410 if share has expired
     """
     # Get share metadata
-    share = get_share(share_token)
+    share = await _get_share(share_token, db)
 
     if not share:
         raise HTTPException(
@@ -249,7 +295,7 @@ async def get_public_share(share_token: str) -> Dict:
         )
 
     # Check if share is valid (active and not expired)
-    if not is_share_valid(share_token):
+    if not await _is_share_valid(share_token, db):
         # Check specific failure reason
         if not share["is_active"]:
             raise HTTPException(
@@ -265,7 +311,7 @@ async def get_public_share(share_token: str) -> Dict:
 
     # Get resume data
     resume_id = share["resume_id"]
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
 
     if resume_data is None:
         raise HTTPException(
@@ -274,7 +320,7 @@ async def get_public_share(share_token: str) -> Dict:
         )
 
     # Increment access count
-    increment_access(share_token)
+    await _increment_access(share_token, db)
 
     return {
         "resume_id": resume_id,
@@ -320,7 +366,7 @@ async def export_resume_pdf(resume_id: str) -> FastAPIResponse:
         HTTPException: 404 if resume not found
     """
     # Get resume data
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
     if resume_data is None:
         raise HTTPException(
             status_code=404,
@@ -362,7 +408,7 @@ async def export_resume_whatsapp(resume_id: str) -> Dict:
         HTTPException: 404 if resume not found
     """
     # Get resume data
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
     if resume_data is None:
         raise HTTPException(
             status_code=404,
@@ -379,7 +425,7 @@ async def export_resume_whatsapp(resume_id: str) -> Dict:
 
 
 @router.get("/v1/resumes/{resume_id}/export/telegram", response_model=TelegramExportResponse)
-async def export_resume_telegram(resume_id: str) -> Dict:
+async def export_resume_telegram(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Generate a Telegram share link for a resume.
 
@@ -396,7 +442,7 @@ async def export_resume_telegram(resume_id: str) -> Dict:
         HTTPException: 404 if resume not found
     """
     # Get resume data
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
     if resume_data is None:
         raise HTTPException(
             status_code=404,
@@ -404,11 +450,10 @@ async def export_resume_telegram(resume_id: str) -> Dict:
         )
 
     # Get or create share for the resume to obtain share URL
-    share_token = get_share_token_by_resume_id(resume_id)
+    share_token = await _get_share_token_by_resume_id(resume_id, db)
     if not share_token:
         # Share doesn't exist, create it first
-        from app.core.share_storage import create_share
-        share_data = create_share(resume_id)
+        share_data = await _create_share(resume_id, db)
         share_token = share_data["share_token"]
 
     # Construct share URL
@@ -441,7 +486,7 @@ async def export_resume_email(resume_id: str) -> Dict:
         HTTPException: 404 if resume not found
     """
     # Get resume data
-    resume_data = get_parsed_resume(resume_id)
+    resume_data = await _get_parsed_resume(resume_id, db)
     if resume_data is None:
         raise HTTPException(
             status_code=404,
