@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pip install --user -r requirements.txt",
-  "installCommand": "pip install --user -r requirements.txt",
-  "framework": null
+  "buildCommand": "uv sync --frozen",
+  "installCommand": "uv sync --frozen",
+  "framework": null,
+  "pythonVersion": "3.11"
 }

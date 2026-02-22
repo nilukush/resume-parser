@@ -1,0 +1,48 @@
+# Virtual environments
+.venv/
+venv/
+*.venv/
+
+# UV
+.uv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Development
+*.pid
+*.log
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+
+# Git
+.git/
+.gitignore
+
+# Local config
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
