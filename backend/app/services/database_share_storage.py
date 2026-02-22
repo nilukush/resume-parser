@@ -9,7 +9,7 @@ across server restarts and can be accessed from multiple instances.
 """
 
 from typing import Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from uuid import UUID
@@ -158,7 +158,7 @@ async def is_share_valid(share_token: str, db: AsyncSession) -> bool:
 
     # Check expiration
     expires_at = datetime.fromisoformat(share["expires_at"])
-    if datetime.utcnow() > expires_at:
+    if datetime.now(timezone.utc) > expires_at:
         return False
 
     return True
