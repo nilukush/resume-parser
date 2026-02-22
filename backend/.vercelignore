@@ -36,3 +36,4 @@ supabase/
 # Exclude development config
 .env.local
 .env.*.local
+# Updated for deployment
