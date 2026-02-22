@@ -349,7 +349,7 @@ class EmailExportResponse(BaseModel):
 
 
 @router.get("/v1/resumes/{resume_id}/export/pdf")
-async def export_resume_pdf(resume_id: str) -> FastAPIResponse:
+async def export_resume_pdf(resume_id: str, db=Depends(get_db)) -> FastAPIResponse:
     """
     Export a resume as a PDF file.
 
@@ -391,7 +391,7 @@ async def export_resume_pdf(resume_id: str) -> FastAPIResponse:
 
 
 @router.get("/v1/resumes/{resume_id}/export/whatsapp", response_model=WhatsAppExportResponse)
-async def export_resume_whatsapp(resume_id: str) -> Dict:
+async def export_resume_whatsapp(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Generate a WhatsApp share link for a resume.
 
@@ -469,7 +469,7 @@ async def export_resume_telegram(resume_id: str, db=Depends(get_db)) -> Dict:
 
 
 @router.get("/v1/resumes/{resume_id}/export/email", response_model=EmailExportResponse)
-async def export_resume_email(resume_id: str) -> Dict:
+async def export_resume_email(resume_id: str, db=Depends(get_db)) -> Dict:
     """
     Generate an email mailto link for sharing a resume.
 
