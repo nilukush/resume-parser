@@ -26,6 +26,8 @@ export function useWebSocket(url: string): WebSocketHookReturn {
   const [error, setError] = useState<Event | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const isCleaningUpRef = useRef(false)
+  const connectionAttemptedRef = useRef(false)  // Prevent duplicate connections
 
   const sendMessage = useCallback((message: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -34,11 +36,28 @@ export function useWebSocket(url: string): WebSocketHookReturn {
   }, [])
 
   useEffect(() => {
+    // Prevent multiple connections in React StrictMode
+    if (connectionAttemptedRef.current) {
+      return
+    }
+    connectionAttemptedRef.current = true
+
     let ws: WebSocket
     let reconnectAttempts = 0
     const maxReconnectAttempts = 3
+    isCleaningUpRef.current = false
 
     const connect = () => {
+      // Don't reconnect if component is unmounting
+      if (isCleaningUpRef.current) {
+        return
+      }
+
+      // Prevent multiple WebSocket instances
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+        return
+      }
+
       try {
         ws = new WebSocket(url)
         wsRef.current = ws
@@ -64,12 +83,15 @@ export function useWebSocket(url: string): WebSocketHookReturn {
           setError(event)
         }
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           setConnected(false)
-          console.log('WebSocket disconnected')
+          console.log('WebSocket disconnected', { code: event.code, reason: event.reason })
 
-          // Attempt to reconnect
-          if (reconnectAttempts < maxReconnectAttempts) {
+          // Only attempt to reconnect if:
+          // 1. Component is not unmounting
+          // 2. The close was not intentional (code 1000)
+          // 3. We haven't exceeded max reconnect attempts
+          if (!isCleaningUpRef.current && event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
             reconnectAttempts++
             console.log(`Reconnecting... Attempt ${reconnectAttempts}`)
             reconnectTimeoutRef.current = setTimeout(connect, 2000)
@@ -85,11 +107,14 @@ export function useWebSocket(url: string): WebSocketHookReturn {
 
     // Cleanup on unmount
     return () => {
+      isCleaningUpRef.current = true
+      connectionAttemptedRef.current = false  // Reset for next mount
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
-      if (ws) {
-        ws.close()
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounting')
+        wsRef.current = null
       }
     }
   }, [url])

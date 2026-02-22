@@ -21,7 +21,7 @@ export default function ProcessingPage() {
   ])
   const [error, setError] = useState<string | null>(null)
   const [estimatedTime, setEstimatedTime] = useState<number>(30)
-  const hasCheckedCompletionRef = useRef(false)
+  const hasRedirectedRef = useRef(false)
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
   const wsUrl = `${import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/ws'}/resumes/${id}`
@@ -49,7 +49,7 @@ export default function ProcessingPage() {
   useEffect(() => {
     // If WebSocket connects but we don't receive progress after 5 seconds,
     // check if parsing is already complete (race condition fallback)
-    if (connected && !hasCheckedCompletionRef.current) {
+    if (connected && !hasRedirectedRef.current) {
       pollTimeoutRef.current = setTimeout(async () => {
         const isComplete = await checkCompletionStatus()
         if (!isComplete) {
@@ -58,7 +58,6 @@ export default function ProcessingPage() {
             i === 0 ? { ...s, status: 'in_progress' as const, statusMessage: 'Processing...' } : s
           ))
         }
-        hasCheckedCompletionRef.current = true
       }, 5000)
     }
 
@@ -72,10 +71,10 @@ export default function ProcessingPage() {
   // Also check immediately if WebSocket never connects
   useEffect(() => {
     const immediateCheckTimeout = setTimeout(async () => {
-      if (!connected && !hasCheckedCompletionRef.current) {
+      if (!connected && !hasRedirectedRef.current) {
         const isComplete = await checkCompletionStatus()
         if (isComplete) {
-          hasCheckedCompletionRef.current = true
+          // Already complete, redirect will be handled by checkCompletionStatus
         }
       }
     }, 2000)
@@ -141,6 +140,13 @@ export default function ProcessingPage() {
             statusMessage: message.status || 'Processing...'
           }
           break
+
+        case 'complete':
+          // Mark all stages as complete and trigger redirect
+          newStages[0] = { ...newStages[0], status: 'complete', progress: 100 }
+          newStages[1] = { ...newStages[1], status: 'complete', progress: 100 }
+          newStages[2] = { ...newStages[2], status: 'complete', progress: 100 }
+          break
       }
 
       // Update estimated time
@@ -150,6 +156,11 @@ export default function ProcessingPage() {
 
       return newStages
     })
+
+    // If stage is complete, trigger the redirect
+    if (message.stage === 'complete') {
+      handleComplete(message)
+    }
   }
 
   const handleComplete = (_message: WebSocketMessage) => {
@@ -162,8 +173,8 @@ export default function ProcessingPage() {
     )
 
     // Prevent multiple redirects
-    if (hasCheckedCompletionRef.current) return
-    hasCheckedCompletionRef.current = true
+    if (hasRedirectedRef.current) return
+    hasRedirectedRef.current = true
 
     // Redirect to review page after a short delay
     setTimeout(() => {

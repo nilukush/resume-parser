@@ -1,0 +1,36 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: resumate-postgres
+    environment:
+      POSTGRES_DB: resumate
+      POSTGRES_USER: resumate_user
+      POSTGRES_PASSWORD: resumate_password
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with native PostgreSQL on host
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resumate_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (for future Celery support)
+  redis:
+    image: redis:7-alpine
+    container_name: resumate-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

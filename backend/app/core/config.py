@@ -29,12 +29,16 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/resumate",
+        default="postgresql+asyncpg://resumate_user:resumate_password@localhost:5433/resumate",
         description="Async PostgreSQL database URL"
     )
     DATABASE_URL_SYNC: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/resumate",
+        default="postgresql://resumate_user:resumate_password@localhost:5433/resumate",
         description="Synchronous PostgreSQL database URL for migrations"
+    )
+    USE_DATABASE: bool = Field(
+        default=False,
+        description="Enable PostgreSQL database storage (vs in-memory)"
     )
 
     # Redis
@@ -95,6 +99,10 @@ class Settings(BaseSettings):
     AWS_REGION: str = Field(default="us-east-1", description="AWS region")
 
     # Celery
+    USE_CELERY: bool = Field(
+        default=False,
+        description="Enable Celery async task processing"
+    )
     CELERY_BROKER_URL: str = Field(
         default="redis://localhost:6379/1",
         description="Celery broker URL"
@@ -163,6 +171,24 @@ def get_settings() -> Settings:
         Settings: The application settings instance
     """
     return Settings()
+
+
+def clear_settings_cache() -> None:
+    """
+    Clear the cached settings instance.
+
+    This function clears the LRU cache for get_settings(), forcing a reload
+    of environment variables on the next call to get_settings().
+
+    Use this in tests to reset settings between test runs when using
+    monkeypatch.setenv() to change environment variables.
+
+    Example:
+        monkeypatch.setenv("USE_DATABASE", "false")
+        clear_settings_cache()
+        settings = get_settings()  # Will reload with new env vars
+    """
+    get_settings.cache_clear()
 
 
 # Global settings instance

@@ -74,6 +74,7 @@ Resume Upload
 **File:** `backend/app/services/ocr_extractor.py`
 
 **Key Features:**
+
 - Automatic detection: Try regular text extraction first, fall back to OCR if text < 100 characters
 - PDF to image conversion using `pdf2image`
 - Image preprocessing: Grayscale conversion, noise reduction, thresholding
@@ -81,6 +82,7 @@ Resume Upload
 - Configurable Tesseract path for cross-platform support (macOS/Linux/Windows)
 
 **Implementation Strategy:**
+
 ```python
 async def extract_text_with_ocr(file_path: str, file_content: bytes) -> str:
     """
@@ -101,12 +103,14 @@ async def extract_text_with_ocr(file_path: str, file_content: bytes) -> str:
 ```
 
 **Configuration:**
+
 - Tesseract path from environment variable
 - Page segmentation mode (psm): Auto-detection
 - Language: English (default), extensible to multilingual
 - DPI: 300 for optimal OCR accuracy
 
 **Dependencies:**
+
 - `pdf2image==1.16.3` - PDF to image conversion
 - `pytesseract==0.3.10` - Python Tesseract wrapper
 - `Pillow==10.2.0` - Image processing
@@ -121,12 +125,14 @@ async def extract_text_with_ocr(file_path: str, file_content: bytes) -> str:
 **File:** `backend/app/services/ai_enhancer.py`
 
 **Approach:** Validate and enhance (NOT replace) NLP extraction
+
 - Reduces API costs (NLP does heavy lifting)
 - Provides fallback if GPT-4 fails
 - Enables confidence score comparison (NLP vs AI)
 - Allows targeted improvements based on error patterns
 
 **GPT-4 Prompt Structure:**
+
 ```python
 SYSTEM_PROMPT = """
 You are an expert resume parser. Your task is to validate and enhance
@@ -155,6 +161,7 @@ Focus on:
 ```
 
 **Key Functions:**
+
 ```python
 async def enhance_with_ai(
     resume_text: str,
@@ -187,23 +194,27 @@ async def _extract_accurate_dates(
 ```
 
 **Confidence Scoring Strategy:**
+
 - NLP confidence: Original spaCy-based score
 - AI confidence: GPT-4's self-assessed confidence per field
 - **Final confidence = Weighted average: 60% AI + 40% NLP**
 - Fields below 80% flagged for human review
 
 **Error Handling:**
+
 - Fallback to NLP-only if GPT-4 API fails
 - Retry logic: 3 attempts with exponential backoff (1s, 2s, 4s)
 - Timeout: 15 seconds per request
 - Cost tracking: Monitor token usage per resume
 
 **Performance:**
+
 - Average resume: ~500 input tokens, ~300 output tokens
 - Estimated cost: $0.014 per resume (1.4 cents)
 - **1,000 resumes ≈ $14**
 
 **Dependencies:**
+
 - `openai==1.10.0` - OpenAI Python SDK
 - Environment variable: `OPENAI_API_KEY`
 
@@ -214,15 +225,18 @@ async def _extract_accurate_dates(
 **Purpose:** Process resumes asynchronously with proper scaling, reliability, and progress tracking.
 
 **Files:**
+
 - `backend/app/worker.py` - Celery application setup
 - `backend/app/tasks/parse_resume.py` - Async parsing task definition
 
 **Current Limitation:**
+
 - Parsing happens in FastAPI background tasks
 - Not scalable across multiple workers
 - No persistent task state if server restarts
 
 **Celery Architecture:**
+
 ```python
 # backend/app/worker.py
 from celery import Celery
@@ -289,11 +303,13 @@ def parse_resume_task(self, resume_id: str, file_path: str):
 ```
 
 **Progress Tracking:**
+
 - Celery task state: PENDING, STARTED, PROGRESS, SUCCESS, FAILURE
 - Real-time updates via WebSocket (listen to Celery events)
 - Frontend polls task status via API endpoint
 
 **Deployment:**
+
 ```bash
 # Terminal 1: Start Redis
 redis-server
@@ -309,6 +325,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Key Features:**
+
 - Automatic retries on failure (3 attempts)
 - Dead letter queue for failed tasks
 - Task priority queue (future: VIP users)
@@ -316,11 +333,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Graceful shutdown: Complete current tasks before stopping
 
 **Dependencies:**
+
 - `celery==5.3.6` - Distributed task queue
 - `redis==5.0.1` - Message broker and result backend
 - `flower==2.0.1` - Optional monitoring UI
 
 **Infrastructure:**
+
 - Redis server for message broker and result storage
 - Separate Celery worker process(es)
 - Optional: Flower for web-based task monitoring
@@ -332,17 +351,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 **File:** `backend/app/services/parser_orchestrator.py` (modify existing)
 
 **Current Flow:**
+
 ```
 text → NLP extraction → Complete
 ```
 
 **New Flow:**
+
 ```
 text → NLP extraction → AI enhancement → Complete
       (with OCR fallback)    (GPT-4 validation)
 ```
 
 **Updated Orchestrator Logic:**
+
 ```python
 async def parse_resume(
     resume_id: str,
@@ -411,12 +433,14 @@ async def parse_resume(
 ```
 
 **Progress Stages:**
+
 1. `text_extraction` (0-30%) - Document processing + OCR fallback
 2. `nlp_parsing` (30-60%) - spaCy entity extraction
 3. `ai_enhancement` (60-90%) - GPT-4 validation and enhancement
 4. `complete` (100%) - Final results
 
 **Confidence Score Merging:**
+
 ```python
 def merge_confidence_scores(
     nlp_data: Dict[str, Any],
@@ -451,6 +475,7 @@ def merge_confidence_scores(
 **Existing Model:** `ResumeCorrection` (already in database schema)
 
 **Collection Logic:**
+
 ```python
 async def log_corrections(
     resume_id: str,
@@ -507,11 +532,13 @@ def _compare_fields(
 ```
 
 **Usage:**
+
 - Called when user saves corrections on Review Page (PUT `/v1/resumes/{id}`)
 - Tracks error patterns: Which fields NLP/AI consistently misidentify
 - Enables targeted model retraining
 
 **Future Use (Phase 4):**
+
 - Fine-tune spaCy model on correction data
 - Improve GPT-4 prompts based on error patterns
 - Fine-tune open-source LLMs (LLaMA, Mistral)
@@ -580,6 +607,7 @@ flower==2.0.1              # Optional: Celery monitoring web UI
 ### System Dependencies Installation:
 
 **macOS:**
+
 ```bash
 brew install tesseract
 brew install tesseract-lang  # For additional languages
@@ -588,6 +616,7 @@ brew install redis
 ```
 
 **Linux (Ubuntu/Debian):**
+
 ```bash
 sudo apt-get update
 sudo apt-get install tesseract-ocr
@@ -598,6 +627,7 @@ sudo systemctl start redis-server
 ```
 
 **Windows:**
+
 ```bash
 # Download Tesseract installer from:
 # https://github.com/UB-Mannheim/tesseract/wiki
@@ -660,6 +690,7 @@ class CostTracker:
 ```
 
 **Cost Estimates:**
+
 - Average resume: 500 input tokens, 300 output tokens
 - Cost per resume: ~$0.014 (1.4 cents)
 - **100 resumes ≈ $1.40**
@@ -667,6 +698,7 @@ class CostTracker:
 - **10,000 resumes ≈ $140**
 
 **Cost Optimization:**
+
 - Use GPT-4-turbo-preview (cheaper than GPT-4)
 - Low temperature (0.1) for consistent output
 - Efficient prompt design to minimize tokens
@@ -695,6 +727,7 @@ async def upload_resume(...):
 ```
 
 **Celery Worker Limits:**
+
 - `CELERY_WORKER_CONCURRENCY=4` - Max 4 concurrent tasks per worker
 - `MAX_CONCURRENT_TASKS=10` - Global limit across all workers
 - Task priority: VIP users first (future enhancement)
@@ -788,6 +821,7 @@ async def test_rate_limiting_enforced()
 ### Test Data Requirements
 
 **Sample Resumes for Testing:**
+
 - `tests/fixtures/resumes/digital.pdf` - Standard digital resume
 - `tests/fixtures/resumes/scanned.pdf` - Scanned/image-based PDF
 - `tests/fixtures/resumes/multi_page.pdf` - 3+ page resume
@@ -829,6 +863,7 @@ def mock_tesseract():
 ```
 
 **Coverage Threshold:**
+
 - Target: 85%+ code coverage for new AI/OCR components
 - Existing: Maintain 80%+ overall coverage
 
@@ -837,6 +872,7 @@ def mock_tesseract():
 ## Implementation Timeline (4 Weeks)
 
 ### Week 1: OCR Service
+
 - Implement `ocr_extractor.py`
 - Add unit tests (15 tests)
 - Add integration tests (5 tests)
@@ -846,6 +882,7 @@ def mock_tesseract():
 **Deliverable:** Working OCR fallback for scanned PDFs
 
 ### Week 2: AI Enhancement Service
+
 - Implement `ai_enhancer.py`
 - Add unit tests (20 tests)
 - Add integration tests with OpenAI mocking (8 tests)
@@ -856,6 +893,7 @@ def mock_tesseract():
 **Deliverable:** GPT-4 integration with 90%+ accuracy improvement
 
 ### Week 3: Celery Integration
+
 - Setup Redis and Celery worker
 - Implement `parse_resume_task.py`
 - Update API endpoints to trigger Celery tasks
@@ -866,6 +904,7 @@ def mock_tesseract():
 **Deliverable:** Async processing with Celery + Redis
 
 ### Week 4: Production Hardening
+
 - Implement training data collection
 - Add end-to-end tests (5 tests)
 - Performance optimization and load testing
@@ -881,26 +920,31 @@ def mock_tesseract():
 ## Success Criteria
 
 ✅ **Accuracy:**
+
 - 90%+ correct extraction on standard resumes (up from 70%)
 - Handle both digital and scanned PDFs
 - Accurate date and relationship extraction
 
 ✅ **Performance:**
+
 - <30 second average processing time (same as current)
 - Support 50+ concurrent parsing tasks
 - 99% uptime in production
 
 ✅ **Cost Management:**
+
 - <$0.02 per resume parsing cost
 - Effective rate limiting to prevent abuse
 - Cost tracking and budget alerts
 
 ✅ **Code Quality:**
+
 - 85%+ test coverage for new components
 - 170+ total tests (120 existing + 50 new)
 - Zero regressions in existing functionality
 
 ✅ **Reliability:**
+
 - Automatic fallbacks (NLP if AI fails, OCR if text extraction fails)
 - Graceful degradation on service failures
 - Comprehensive error handling and logging
@@ -910,28 +954,36 @@ def mock_tesseract():
 ## Risk Mitigation
 
 ### Risk 1: OpenAI API Costs
+
 **Mitigation:**
+
 - Rate limiting per IP/user
 - Cost tracking and alerts
 - Efficient prompt design
 - Consider open-source LLM fine-tuning for Phase 4
 
 ### Risk 2: OCR Accuracy
+
 **Mitigation:**
+
 - Image preprocessing (grayscale, thresholding)
 - High DPI (300) for PDF to image conversion
 - Fallback to manual entry if OCR fails completely
 - User feedback loop to track OCR failures
 
 ### Risk 3: Celery Complexity
+
 **Mitigation:**
+
 - Start with simple single-worker setup
 - Use Flower for monitoring and debugging
 - Comprehensive error handling and logging
 - Dead letter queue for failed tasks
 
 ### Risk 4: API Latency
+
 **Mitigation:**
+
 - Timeout handling (15 seconds)
 - Retry with exponential backoff
 - Async processing (no blocking)
@@ -942,22 +994,26 @@ def mock_tesseract():
 ## Future Enhancements (Phase 4+)
 
 1. **Fine-tuned Open-Source Models**
+   
    - Fine-tune LLaMA, Mistral on correction data
    - Reduce or eliminate OpenAI API costs
    - Self-hosted models for data privacy
 
 2. **Multi-language Support**
+   
    - Tesseract language packs
    - GPT-4 multi-language capabilities
    - Language detection and routing
 
 3. **Advanced Features**
+   
    - Resume comparison and similarity scoring
    - Skill gap analysis
    - Resume-to-job-description matching
    - LinkedIn profile import
 
 4. **Continuous Learning**
+   
    - Automatic model retraining
    - A/B testing framework
    - Performance dashboard

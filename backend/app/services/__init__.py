@@ -9,6 +9,7 @@ from app.services.nlp_extractor import extract_entities, NLPEntityExtractionErro
 from app.services.parser_orchestrator import ParserOrchestrator
 from app.services.ocr_extractor import extract_text_with_ocr, OCRExtractionError
 from app.services.ai_extractor import enhance_with_ai, extract_skills_with_ai, AIEnhancementError
+from app.services.database_storage import DatabaseStorageService
 
 __all__ = [
     "extract_text",
@@ -21,4 +22,5 @@ __all__ = [
     "enhance_with_ai",
     "extract_skills_with_ai",
     "AIEnhancementError",
+    "DatabaseStorageService",
 ]

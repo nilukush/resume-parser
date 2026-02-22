@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import json
+from pydantic import BaseModel, Field, field_validator
 
 class ProgressStage(str, Enum):
     """Parsing pipeline stages"""
@@ -71,3 +72,72 @@ class ErrorProgress(ProgressUpdate):
             status=f"Error: {error_message}",
             data={"error_code": error_code, "error_message": error_message}
         )
+
+
+class ParsedData(BaseModel):
+    """
+    Pydantic model for parsed resume data.
+
+    This is the canonical structure for resume data extracted by NLP/AI.
+    Used throughout the application for type safety and validation.
+    """
+
+    # Personal Information
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+
+    # Online Presence
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+
+    # Summary
+    summary: Optional[str] = None
+
+    # Skills (list of skill names)
+    skills: List[str] = Field(default_factory=list)
+
+    # Work Experience (list of experience objects)
+    work_experience: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Education (list of education objects)
+    education: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Certifications
+    certifications: List[str] = Field(default_factory=list)
+
+    # Languages
+    languages: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Projects
+    projects: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Additional Information
+    additional_info: Dict[str, Any] = Field(default_factory=dict)
+
+    # Metadata
+    extraction_confidence: Optional[float] = Field(default=0.0, ge=0.0, le=1.0)
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        """Validate phone number format"""
+        if v is None:
+            return None
+        # Remove common formatting
+        cleaned = v.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+        if cleaned and len(cleaned) >= 10:
+            return v
+        return None
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        """Validate email format"""
+        if v is None:
+            return None
+        if '@' in v and '.' in v.split('@')[-1]:
+            return v.lower()
+        return None

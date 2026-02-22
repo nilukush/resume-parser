@@ -16,6 +16,8 @@ import asyncio
 from app.api.websocket import manager
 from app.services.parser_orchestrator import ParserOrchestrator
 from app.core.storage import get_parsed_resume, update_parsed_resume
+from app.core.database import get_db
+from app.services.storage_adapter import StorageAdapter
 
 # File type validation constants
 ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt"}
@@ -84,7 +86,14 @@ def _validate_file_type(filename: str, content_type: str) -> tuple[bool, str | N
     return True, None
 
 
-async def parse_resume_background(resume_id: str, filename: str, content: bytes):
+async def parse_resume_background(
+    resume_id: str,
+    filename: str,
+    content: bytes,
+    file_hash: str,
+    file_size: int,
+    file_type: str
+):
     """
     Background task to parse resume and send progress updates.
 
@@ -96,13 +105,23 @@ async def parse_resume_background(resume_id: str, filename: str, content: bytes)
         resume_id: Unique identifier for this resume
         filename: Original filename of the uploaded file
         content: Raw file content as bytes
+        file_hash: SHA256 hash of file content
+        file_size: File size in bytes
+        file_type: File extension (pdf, docx, doc, txt)
 
     Note:
         Errors are logged but not raised to prevent background task
         failures from affecting the HTTP response.
     """
     try:
-        await orchestrator.parse_resume(resume_id, filename, content)
+        await orchestrator.parse_resume(
+            resume_id,
+            filename,
+            content,
+            file_hash=file_hash,
+            file_size=file_size,
+            file_type=file_type
+        )
     except Exception as e:
         # Log error but don't raise - background task should not fail visibly
         print(f"Background parsing error for {resume_id}: {e}")
@@ -132,6 +151,10 @@ async def upload_resume(
     Raises:
         HTTPException: 400 if file type or size validation fails
     """
+    from app.core.database import db_manager
+    from app.models.resume import Resume
+    from sqlalchemy import select
+
     # Validate file type
     is_valid, error_message = _validate_file_type(file.filename, file.content_type)
     if not is_valid:
@@ -157,19 +180,80 @@ async def upload_resume(
     # Generate SHA256 hash of file content for deduplication
     file_hash = hashlib.sha256(content).hexdigest()
 
-    # Start background parsing task
+    # Extract file extension for file_type field
+    file_extension = file.filename.split(".")[-1].lower() if file.filename else "unknown"
+
+    # Save resume metadata to database BEFORE starting background task
+    # This ensures the resume record exists when the background task tries to update it
+    from app.core.config import settings
+
+    if settings.USE_DATABASE:
+        async with db_manager.get_session() as db:
+            # Check for duplicate file hash
+            existing = await db.execute(
+                select(Resume).where(Resume.file_hash == file_hash)
+            )
+            existing_resume = existing.scalar_one_or_none()
+
+            if existing_resume:
+                # Check if existing resume has been processed
+                from app.services.storage_adapter import StorageAdapter
+                adapter = StorageAdapter(db)
+                existing_data = await adapter.get_parsed_data(str(existing_resume.id))
+
+                # Return existing resume info instead of error
+                return {
+                    "resume_id": str(existing_resume.id),
+                    "status": "already_processed" if existing_resume.processing_status == "complete" else "processing",
+                    "message": "This file was already uploaded",
+                    "file_hash": file_hash,
+                    "original_filename": existing_resume.original_filename,
+                    "uploaded_at": existing_resume.uploaded_at.isoformat() if existing_resume.uploaded_at else None,
+                    "processed_at": existing_resume.processed_at.isoformat() if existing_resume.processed_at else None,
+                    "websocket_url": f"/ws/resumes/{existing_resume.id}",
+                    "has_parsed_data": existing_data is not None,
+                    # If complete, include the parsed data for immediate display
+                    "existing_data": existing_data if existing_data else None
+                }
+
+            # Create resume metadata record
+            resume = Resume(
+                id=resume_id,
+                original_filename=file.filename,
+                file_type=file_extension,
+                file_size_bytes=len(content),
+                file_hash=file_hash,
+                storage_path="",  # Will implement file storage later
+                processing_status="processing"
+            )
+            db.add(resume)
+            await db.commit()
+
+    # Start background parsing task with metadata parameters
     # BackgroundTasks is preferred for production
     if background_tasks:
         background_tasks.add_task(
             parse_resume_background,
             resume_id,
             file.filename,
-            content
+            content,
+            file_hash,
+            len(content),
+            file_extension
         )
     else:
         # For testing without BackgroundTasks, use asyncio.create_task
         # Note: In tests using TestClient, explicit task handling may be needed
-        asyncio.create_task(parse_resume_background(resume_id, file.filename, content))
+        asyncio.create_task(
+            parse_resume_background(
+                resume_id,
+                file.filename,
+                content,
+                file_hash,
+                len(content),
+                file_extension
+            )
+        )
 
     # Return acceptance response with WebSocket URL for progress tracking
     return {
@@ -193,21 +277,77 @@ async def get_resume(resume_id: str) -> ResumeResponse:
         ResumeResponse with parsed data if found
 
     Raises:
-        HTTPException: 404 if resume not found
+        HTTPException: 404 if resume not found, 202 if still processing
     """
-    parsed_data = get_parsed_resume(resume_id)
+    import asyncio
+    from app.core.config import settings
+    from app.core.database import db_manager
+    from app.models.resume import Resume
+    from sqlalchemy import select
 
-    if parsed_data is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Resume {resume_id} not found or still processing"
+    # When using database, check resume processing status
+    if settings.USE_DATABASE:
+        async with db_manager.get_session() as db:
+            # First check if resume exists and its processing status
+            result = await db.execute(
+                select(Resume).where(Resume.id == resume_id)
+            )
+            resume = result.scalar_one_or_none()
+
+            if not resume:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Resume {resume_id} not found"
+                )
+
+            # If resume is still being processed, return 202 Accepted
+            if resume.processing_status == "processing":
+                raise HTTPException(
+                    status_code=202,
+                    detail=f"Resume {resume_id} is still being processed. Please try again in a few seconds."
+                )
+
+            # Resume exists and is marked complete, try to get parsed data
+            adapter = StorageAdapter(db)
+            parsed_data = await adapter.get_parsed_data(resume_id)
+
+            # Handle race condition: Resume marked complete but data not yet committed
+            # Retry up to 3 times with 100ms delay between retries
+            if parsed_data is None:
+                for attempt in range(3):
+                    await asyncio.sleep(0.1)  # Wait 100ms
+                    await db.rollback()  # Clear any transaction state
+                    parsed_data = await adapter.get_parsed_data(resume_id)
+                    if parsed_data is not None:
+                        break
+
+            if parsed_data is None:
+                # Data still not available after retries
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Resume {resume_id} not found or still processing"
+                )
+
+            return ResumeResponse(
+                resume_id=resume_id,
+                status="complete",
+                data=parsed_data
+            )
+    else:
+        # In-memory storage path
+        parsed_data = get_parsed_resume(resume_id)
+
+        if parsed_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Resume {resume_id} not found or still processing"
+            )
+
+        return ResumeResponse(
+            resume_id=resume_id,
+            status="complete",
+            data=parsed_data
         )
-
-    return ResumeResponse(
-        resume_id=resume_id,
-        status="complete",
-        data=parsed_data
-    )
 
 
 @router.put("/{resume_id}", response_model=ResumeResponse)
@@ -228,8 +368,16 @@ async def update_resume(
     Raises:
         HTTPException: 404 if resume not found
     """
+    from app.core.config import settings
+    from app.core.database import db_manager
+
     # Get current data
-    current_data = get_parsed_resume(resume_id)
+    if settings.USE_DATABASE:
+        async with db_manager.get_session() as db:
+            adapter = StorageAdapter(db)
+            current_data = await adapter.get_parsed_data(resume_id)
+    else:
+        current_data = get_parsed_resume(resume_id)
 
     if current_data is None:
         raise HTTPException(
@@ -248,7 +396,12 @@ async def update_resume(
         current_data["skills"].update(update_data.skills)
 
     # Save updated data
-    update_success = update_parsed_resume(resume_id, current_data)
+    if settings.USE_DATABASE:
+        async with db_manager.get_session() as db:
+            adapter = StorageAdapter(db)
+            update_success = await adapter.update_parsed_data(resume_id, current_data)
+    else:
+        update_success = update_parsed_resume(resume_id, current_data)
 
     if not update_success:
         raise HTTPException(

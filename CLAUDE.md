@@ -1,7 +1,7 @@
 # ResuMate - AI-Powered Resume Parser
 
 > **Project Context for Claude AI Assistant**
-> Last Updated: 2026-02-22 | Status: MVP + AI Enhancement + Database Persistence Complete
+> Last Updated: 2026-02-22 | Commit: 2691777 | Status: MVP + Database + Bug Fixes Complete
 
 ## Overview
 
@@ -204,9 +204,9 @@ docker exec -it resumate-postgres psql -U resumate_user resumate
 - All critical bugs fixed (13 bug fix sessions)
 
 ### Test Coverage
-- **Backend**: 136/136 tests passing (28 unit, 9 integration, 4 E2E)
-- **Frontend**: 31/31 tests passing
-- **Total**: 167+ tests
+- **Backend**: 194 tests passing (includes database_share_storage integration tests)
+- **Frontend**: 31 tests passing
+- **Total**: 225+ tests
 
 ### Remaining (Phase 3+)
 - Celery async task queue
@@ -216,25 +216,36 @@ docker exec -it resumate-postgres psql -U resumate_user resumate
 
 ---
 
-## Recent Bug Fixes (2026-02-21)
+## Recent Bug Fixes (Commit 2691777)
 
 ### Bug Fix #13: Share Endpoint 404 & WebSocket Serialization ✅
 
 **Issues Resolved:**
-1. **Share 404 Error**: Shares used in-memory storage instead of database persistence
+1. **Share 404**: Shares used in-memory storage instead of database persistence
 2. **WebSocket Closure**: Database objects (UUID, Decimal, datetime) not JSON-serializable
 
 **Solutions:**
-- Created `database_share_storage.py` with async CRUD operations
-- Added storage abstraction layer routing based on `USE_DATABASE` flag
-- Implemented `_serialize_for_websocket()` for UUID/datetime/Decimal conversion
-- Enhanced error logging with exception types and stack traces
+- Created `app/services/database_share_storage.py` (243 lines) - async CRUD operations
+- Added storage abstraction in `shares.py` - routes based on `USE_DATABASE` flag
+- Implemented `_serialize_for_websocket()` in `parser_orchestrator.py` - recursive UUID/datetime/Decimal conversion
+- Enhanced error logging in `websocket.py` with exception types and stack traces
 
-**Files Modified:**
-- `app/services/database_share_storage.py` (new)
-- `app/services/parser_orchestrator.py` (added serialization)
-- `app/api/shares.py` (storage abstraction)
-- `app/api/websocket.py` (improved error logging)
+**Pattern: Storage Abstraction**
+```python
+async def _create_share(resume_id: str, db=None):
+    if settings.USE_DATABASE and db:
+        return await create_share_db(resume_id, db)
+    return create_share_inmemory(resume_id)
+```
+
+**Pattern: JSON Serialization at Boundaries**
+```python
+def _serialize_for_websocket(data: Any) -> Any:
+    if isinstance(data, UUID): return str(data)
+    if isinstance(data, datetime): return data.isoformat()
+    if isinstance(data, Decimal): return float(data)
+    # ... recursive for dict/list
+```
 
 See: `docs/DEBUGGING-SESSION-2026-02-21-FIXES.md`
 
@@ -268,12 +279,18 @@ See: `docs/DEBUGGING-SESSION-2026-02-21-FIXES.md`
 
 | Document | Purpose |
 |----------|---------|
-| `docs/PROGRESS.md` | Detailed task-by-task progress, commit references |
+| `docs/PROGRESS.md` | Compact progress tracking (already optimized, ~467 lines) |
 | `docs/DATABASE_SETUP.md` | Database setup, migrations, troubleshooting |
-| `docs/DEBUGGING-SESSION-2026-02-21-FIXES.md` | Latest bug fixes (Share 404, WebSocket) |
-| `docs/DEBUGGING-UUID-ISSUE-2026-02-21.md` | UUID generation bug fix |
-| `docs/DEBUGGING-WEBSOCKET-2026-02-21.md` | WebSocket connection issues |
-| `docs/plans/` | Implementation design documents |
+| `docs/DEBUGGING-INDEX.md` | **NEW:** Quick reference for all debugging sessions and common solutions |
+| `docs/plans/INDEX.md` | **NEW:** Implementation plans index with timeline |
+| `docs/plans/` | Detailed implementation design documents |
+| `docs/archive/` | Archived debugging sessions (provides details if needed) |
+
+**Archived Debugging Sessions** (see `docs/DEBUGGING-INDEX.md` for summaries):
+- `DEBUGGING-UUID-ISSUE-2026-02-21.md` - Bug Fix #8: UUID generation
+- `DEBUGGING-WEBSOCKET-2026-02-21.md` - Bug Fix #10: WebSocket cleanup
+- `DEBUGGING-SESSION-2026-02-21.md` - Bug Fix #11: Database transaction rollback
+- `DEBUGGING-SESSION-2026-02-21-FIXES.md` - Bug Fix #13: Share 404 + WebSocket serialization
 
 ---
 

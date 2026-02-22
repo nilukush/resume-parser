@@ -4,6 +4,7 @@ Database configuration and session management.
 This module sets up the SQLAlchemy async engine, session factory,
 and provides dependency injection for FastAPI routes.
 """
+import os
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
@@ -18,6 +19,10 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+
+# Check if we're running Alembic migrations
+# If so, skip engine initialization to avoid async/sync conflicts
+IS_RUNNING_MIGRATION = os.getenv("ALEMBIC_RUNNING", "false").lower() == "true"
 
 
 class Base(DeclarativeBase):
@@ -164,11 +169,14 @@ class DatabaseManager:
 # Global database manager instance
 db_manager = DatabaseManager()
 
-# Create the engine
-engine = db_manager.init_engine(echo=settings.is_development)
-
-# Create the session factory
-AsyncSessionLocal = db_manager.session_factory
+# Create the engine and session factory (skip during migrations)
+# During Alembic migrations, we only need the Base metadata, not the engine
+if not IS_RUNNING_MIGRATION:
+    engine = db_manager.init_engine(echo=settings.is_development)
+    AsyncSessionLocal = db_manager.session_factory
+else:
+    engine = None  # Not used during migrations
+    AsyncSessionLocal = None  # Not used during migrations
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
