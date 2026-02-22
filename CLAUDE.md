@@ -1,22 +1,20 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Project Context for Claude AI Assistant**
-> Last Updated: 2026-02-22 | Commit: 2691777 | Status: MVP + Database + Bug Fixes Complete
+> **Project Context** | Updated: 2026-02-22 | Commit: bda8e90 | Status: MVP + DB + Platform Migration Complete
+
+---
 
 ## Overview
 
-ResuMate extracts structured data from resumes using a multi-stage hybrid approach: **OCR → NLP → AI Enhancement**. Users upload resumes, get real-time parsing progress, review/edit extracted data, and share results.
+ResuMate extracts structured data from resumes using **OCR -> NLP -> AI Enhancement**. Users upload resumes, get real-time parsing progress, review/edit extracted data, and share results.
 
-### Solution Architecture
 ```
 Text Extraction (pdfplumber) + OCR Fallback (Tesseract)
-    ↓
-NLP Entity Extraction (spaCy)
-    ↓
-AI Enhancement (OpenAI GPT-4o-mini, optional)
+         -> NLP Entity Extraction (spaCy)
+         -> AI Enhancement (OpenAI GPT-4o-mini, optional)
 ```
 
-**Graceful Degradation**: Parser works without AI if `OPENAI_API_KEY` is not set.
+**Graceful Degradation**: Works without AI if `OPENAI_API_KEY` not set.
 
 ---
 
@@ -24,15 +22,15 @@ AI Enhancement (OpenAI GPT-4o-mini, optional)
 
 | Component | Technology |
 |-----------|------------|
-| **Backend** | FastAPI 0.109.0, Python 3.11 |
-| **OCR** | Tesseract + pdf2image 1.16.3 |
-| **NLP** | spaCy 3.7.2 (en_core_web_sm/lg) |
-| **AI** | OpenAI 1.10.0 (GPT-4o-mini) |
-| **Database** | PostgreSQL with async SQLAlchemy |
-| **Frontend** | React 18 + TypeScript 5.3 + Vite 5.0 |
-| **Styling** | Tailwind CSS 3.4 (navy/gold theme) |
-| **State** | Zustand 4.5 |
-| **Testing** | pytest 7.4.4, pytest-asyncio 0.23.3 |
+| Backend | FastAPI 0.109.0, Python 3.11 |
+| OCR | Tesseract + pdf2image 1.16.3 |
+| NLP | spaCy 3.7.2 (en_core_web_sm/lg) |
+| AI | OpenAI 1.10.0 (GPT-4o-mini) |
+| Database | Supabase PostgreSQL + async SQLAlchemy |
+| Frontend | React 18 + TypeScript 5.3 + Vite 5.0 |
+| Styling | Tailwind CSS 3.4 (navy/gold theme) |
+| State | Zustand 4.5 |
+| Deployment | Vercel (serverless) + Supabase (DB) |
 
 ---
 
@@ -70,48 +68,37 @@ resume-parser/
 │   └── types/               # TypeScript interfaces
 └── docs/
     ├── DATABASE_SETUP.md    # Database setup guide
-    ├── PROGRESS.md          # Detailed progress tracking
-    └── plans/               # Implementation plans
+    ├── SUPABASE_SETUP.md    # Supabase-specific setup
+    ├── VERCEL_DEPLOYMENT.md # Deployment instructions
+    └── PROGRESS.md          # Progress tracking
 ```
 
 ---
 
-## Data Flow & API Endpoints
+## API Endpoints
 
-### Upload Flow
-```
-POST /v1/resumes/upload → Returns { resume_id, websocket_url }
-    ↓
-WebSocket: ws://localhost:8000/ws/resumes/{resume_id}
-    ↓
-Parsing stages broadcast real-time progress:
-    - TEXT_EXTRACTION (0-30%): Try pdfplumber, fallback to OCR if <100 chars
-    - NLP_PARSING (30-60%): Extract entities with spaCy
-    - AI_ENHANCEMENT (60-100%): Validate with GPT-4o-mini (optional)
-    - COMPLETE: Redirect to /review/{id}
-```
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/resumes/upload` | POST | Upload resume, returns {resume_id, websocket_url} |
+| `/v1/resumes/{id}` | GET | Fetch parsed resume data |
+| `/v1/resumes/{id}` | PUT | Save user edits |
+| `/v1/resumes/{id}/share` | POST | Create share token, returns {share_token, share_url, expires_at} |
+| `/v1/resumes/{id}/export/pdf` | GET | Download PDF export |
+| `/ws/resumes/{id}` | WebSocket | Real-time parsing progress |
+| `/health` | GET | Health check with DB status |
 
-### Review & Edit
-```
-GET /v1/resumes/{id} → Display parsed data with confidence scores
-PUT /v1/resumes/{id} → Save user corrections
-```
+### WebSocket Progress Stages
 
-### Share & Export
-```
-POST /v1/resumes/{id}/share → Returns { share_token, share_url, expires_at }
-GET /v1/resumes/{id}/export/pdf → Download PDF
-```
+| Stage | Progress | Description |
+|-------|----------|-------------|
+| TEXT_EXTRACTION | 0-30% | Try pdfplumber, fallback to OCR if <100 chars |
+| NLP_PARSING | 30-60% | Extract entities with spaCy |
+| AI_ENHANCEMENT | 60-100% | Validate with GPT-4o-mini (optional) |
+| COMPLETE | 100% | Ready for review |
 
-### WebSocket Message Format
+**Message Format:**
 ```json
-{
-  "type": "progress_update",
-  "stage": "text_extraction | nlp_parsing | ai_enhancement | complete",
-  "progress": 50,
-  "status": "Extracting text...",
-  "timestamp": "2026-02-20T10:30:00.000000"
-}
+{"type": "progress_update", "stage": "text_extraction", "progress": 50, "status": "Extracting text...", "timestamp": "2026-02-20T10:30:00.000000"}
 ```
 
 ---
@@ -120,10 +107,10 @@ GET /v1/resumes/{id}/export/pdf → Download PDF
 
 ### Backend (.env)
 ```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://resumate_user:resumate_password@localhost:5433/resumate
-DATABASE_URL_SYNC=postgresql://resumate_user:resumate_password@localhost:5433/resumate
-USE_DATABASE=true              # Enable PostgreSQL storage
+# Database (Supabase)
+DATABASE_URL=postgresql+asyncpg://postgres:ENCODED_PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+DATABASE_URL_SYNC=postgresql://postgres:ENCODED_PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+USE_DATABASE=true
 
 # AI (Optional - graceful fallback)
 OPENAI_API_KEY=sk-...
@@ -134,54 +121,42 @@ ENABLE_OCR_FALLBACK=true
 
 # App
 SECRET_KEY=...
-ALLOWED_ORIGINS=http://localhost:3000
-USE_CELERY=false               # Celery async processing (future)
+ALLOWED_ORIGINS=https://resumate-frontend.vercel.app,http://localhost:3000
+USE_CELERY=false
 ```
 
 ### Frontend (.env)
 ```bash
-VITE_API_BASE_URL=http://localhost:8000/v1
-VITE_WS_BASE_URL=ws://localhost:8000/ws
+VITE_API_BASE_URL=https://resumate-backend.vercel.app/v1
+VITE_WS_BASE_URL=wss://resumate-backend.vercel.app/ws
 ```
 
 ---
 
 ## Common Commands
 
-### Development
 ```bash
-# Start database (Docker Compose)
+# Database (Docker)
 docker compose up -d
-
-# Initialize database (run migrations)
 cd backend && ./scripts/init_database.sh
 
-# Backend
+# Backend Dev
 cd backend && source .venv/bin/activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Frontend
+# Frontend Dev
 cd frontend && npm run dev
-```
 
-### Testing
-```bash
-# Backend
+# Testing
 cd backend && python -m pytest tests/ -v
+cd frontend && npm test -- --run && npm run type-check
 
-# Frontend
-cd frontend && npm test -- --run
-npm run type-check
-```
-
-### Database
-```bash
 # Migrations
 cd backend
 alembic revision --autogenerate -m "Description"
 alembic upgrade head
 
-# Connect
+# Database Connect
 docker exec -it resumate-postgres psql -U resumate_user resumate
 ```
 
@@ -189,9 +164,8 @@ docker exec -it resumate-postgres psql -U resumate_user resumate
 
 ## Implementation Status
 
-### Complete (MVP + Phase 2 + Database Persistence + Bug Fixes)
+### Complete
 - Project setup (Python 3.11, React 18, TypeScript)
-- Database models with async SQLAlchemy
 - Text extraction (PDF/DOCX/DOC/TXT) with OCR fallback
 - NLP entity extraction (spaCy)
 - AI enhancement (OpenAI GPT-4o-mini)
@@ -199,61 +173,27 @@ docker exec -it resumate-postgres psql -U resumate_user resumate
 - WebSocket real-time progress
 - React pages (Upload, Processing, Review, Share)
 - Share tokens and export (PDF, WhatsApp, Telegram, Email)
-- **Database persistence** (PostgreSQL with Alembic migrations)
+- **Database persistence** (PostgreSQL with Alembic)
 - **Storage abstraction layer** (in-memory / database switchable)
-- All critical bugs fixed (13 bug fix sessions)
+- **Platform migration**: Render/Railway -> Vercel + Supabase
+- **Vercel build configuration** (PEP 668 compliant)
+- All critical bugs fixed (15+ bug fix sessions)
 
 ### Test Coverage
-- **Backend**: 194 tests passing (includes database_share_storage integration tests)
-- **Frontend**: 31 tests passing
-- **Total**: 225+ tests
+- Backend: 194 tests passing
+- Frontend: 31 tests passing
+- Total: 225+ tests
 
-### Remaining (Phase 3+)
-- Celery async task queue
-- Redis for queue management
-- Production deployment (Railway + Vercel)
-- User authentication
-
----
-
-## Recent Bug Fixes (Commit 2691777)
-
-### Bug Fix #13: Share Endpoint 404 & WebSocket Serialization ✅
-
-**Issues Resolved:**
-1. **Share 404**: Shares used in-memory storage instead of database persistence
-2. **WebSocket Closure**: Database objects (UUID, Decimal, datetime) not JSON-serializable
-
-**Solutions:**
-- Created `app/services/database_share_storage.py` (243 lines) - async CRUD operations
-- Added storage abstraction in `shares.py` - routes based on `USE_DATABASE` flag
-- Implemented `_serialize_for_websocket()` in `parser_orchestrator.py` - recursive UUID/datetime/Decimal conversion
-- Enhanced error logging in `websocket.py` with exception types and stack traces
-
-**Pattern: Storage Abstraction**
-```python
-async def _create_share(resume_id: str, db=None):
-    if settings.USE_DATABASE and db:
-        return await create_share_db(resume_id, db)
-    return create_share_inmemory(resume_id)
-```
-
-**Pattern: JSON Serialization at Boundaries**
-```python
-def _serialize_for_websocket(data: Any) -> Any:
-    if isinstance(data, UUID): return str(data)
-    if isinstance(data, datetime): return data.isoformat()
-    if isinstance(data, Decimal): return float(data)
-    # ... recursive for dict/list
-```
-
-See: `docs/DEBUGGING-SESSION-2026-02-21-FIXES.md`
+### Remaining
+- Celery async task queue + Redis
+- User authentication (JWT)
+- Production monitoring (Sentry configured)
 
 ---
 
 ## Key Design Patterns
 
-### 1. Graceful AI Degradation
+### 1. Graceful Degradation
 - No hard dependency on OpenAI API key
 - Returns NLP-extracted data if AI unavailable
 - Logs errors but doesn't break pipeline
@@ -268,42 +208,51 @@ See: `docs/DEBUGGING-SESSION-2026-02-21-FIXES.md`
 - `StorageAdapter` provides unified interface
 - Seamless migration from in-memory to database
 
-### 4. WebSocket Serialization
-- Always serialize at system boundaries
-- Recursive conversion of UUID, datetime, Decimal
-- Enhanced error logging with stack traces
+### 4. JSON Serialization at Boundaries
+```python
+def _serialize_for_websocket(data: Any) -> Any:
+    if isinstance(data, UUID): return str(data)
+    if isinstance(data, datetime): return data.isoformat()
+    if isinstance(data, Decimal): return float(data)
+```
 
 ---
 
-## Documentation References
+## Platform Details
+
+### Architecture
+```
+Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
+  $0/month             $0/month               $0/month
+  Serverless          500MB, 50K MAU          Edge CDN
+```
+
+### Deployment URLs
+- Backend: `https://resumate-backend.vercel.app`
+- Frontend: `https://resumate-frontend.vercel.app`
+- Database: Supabase (db.piqltpksqaldndikmaob.supabase.co)
+
+### Vercel Build Config
+- Uses `pip install --user` for PEP 668 compliance
+- Max Lambda size: 15MB
+- Runtime: Python 3.11
+
+---
+
+## Documentation Index
 
 | Document | Purpose |
 |----------|---------|
-| `docs/PROGRESS.md` | Compact progress tracking (already optimized, ~467 lines) |
-| `docs/DATABASE_SETUP.md` | Database setup, migrations, troubleshooting |
-| `docs/DEBUGGING-INDEX.md` | **NEW:** Quick reference for all debugging sessions and common solutions |
-| `docs/plans/INDEX.md` | **NEW:** Implementation plans index with timeline |
-| `docs/plans/` | Detailed implementation design documents |
-| `docs/archive/` | Archived debugging sessions (provides details if needed) |
-
-**Archived Debugging Sessions** (see `docs/DEBUGGING-INDEX.md` for summaries):
-- `DEBUGGING-UUID-ISSUE-2026-02-21.md` - Bug Fix #8: UUID generation
-- `DEBUGGING-WEBSOCKET-2026-02-21.md` - Bug Fix #10: WebSocket cleanup
-- `DEBUGGING-SESSION-2026-02-21.md` - Bug Fix #11: Database transaction rollback
-- `DEBUGGING-SESSION-2026-02-21-FIXES.md` - Bug Fix #13: Share 404 + WebSocket serialization
-
----
-
-## Next Steps
-
-1. **Frontend Testing** - Verify complete flow in browser
-2. **Celery Integration** - Async background job processing
-3. **Authentication** - JWT-based user sessions
-4. **Production Deployment** - Railway (backend) + Vercel (frontend)
-5. **Monitoring** - Sentry error tracking
+| `docs/PROGRESS.md` | Progress tracking |
+| `docs/DATABASE_SETUP.md` | Database setup guide |
+| `docs/SUPABASE_SETUP.md` | Supabase-specific setup |
+| `docs/VERCEL_DEPLOYMENT.md` | Vercel deployment instructions |
+| `docs/PLATFORM-MIGRATION-COMPLETE.md` | Platform migration details |
+| `docs/VERCEL-FIX-INSTRUCTIONS.md` | Build troubleshooting |
+| `docs/DEBUGGING-INDEX.md` | Debugging sessions reference |
 
 ---
 
 **Context Generated**: 2026-02-22
 **Claude Model**: Opus 4.5
-**Project Status**: ✅ MVP + AI Enhancement + Database Persistence Complete
+**Project Status**: MVP + Database + Platform Migration Complete
