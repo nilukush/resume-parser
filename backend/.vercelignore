@@ -1,48 +1,38 @@
-# Virtual environments
-.venv/
-venv/
-*.venv/
+# Exclude entire app directory since we use api/index.py
+app/
 
-# UV
-.uv/
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Development
-*.pid
-*.log
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Documentation
-docs/
-*.md
-
-# Git
-.git/
-.gitignore
-
-# Local config
-.env
-.env.local
-.env.*.local
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Cache
+# Exclude development files
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
+
+# Exclude tests
+tests/
+.pytest_cache/
+
+# Exclude documentation
+docs/
+*.md
+
+# Exclude database files
+alembic/
+
+# Exclude frontend files (if any)
+frontend/
+
+# Exclude backup files
+*.backup
+
+# Exclude virtual environments
+.venv/
+venv/
+
+# Exclude egg-info
+*.egg-info/
+
+# Exclude supabase local files
+supabase/
+
+# Exclude development config
+.env.local
+.env.*.local
