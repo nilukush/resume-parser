@@ -1,6 +1,6 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Project Context** | Updated: 2026-02-23 | Commits: 21b3090, 192825b, 8f7e322 | Status: ⚠️ Deployed, Function Detection Issue
+> **Project Context** | Updated: 2026-02-23 | Commits: 1d9fd7b, b222bd5, 550cb96 | Status: ✅ Function Detection Fixed, Ready for Deployment
 
 ---
 
@@ -113,9 +113,9 @@ cd .. && vercel --prod --scope nilukushs-projects
 - Frontend and backend deployment configs fixed
 
 ### 🚧 Known Issues
-- **Vercel Function Detection**: Recent deployments not detecting `api/index.py` as serverless function
-  - Working deployment (3h ago): `https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app`
-  - Root Directory setting needs verification in Vercel Dashboard
+- ✅ **Resolved**: Function detection issue (Bug Fix #18, commit 1d9fd7b)
+  - Root cause: Handler was function instead of module-level variable
+  - Fixed: Restored `handler = Mangum(app, lifespan="off")` pattern
 
 ### Test Coverage
 - Backend: 175+ tests passing (including lazy DB tests)
@@ -141,17 +141,32 @@ def get_engine():
 ```
 **Why**: Serverless functions need to import without dependencies. Follows AWS Lambda, Vercel, and 12-factor app best practices.
 
-### 2. Graceful Degradation
+### 2. Vercel Function Detection (Critical Pattern) ⭐ NEW
+**Pattern**: Handler must be module-level variable, NOT a function
+```python
+# BROKEN (Vercel cannot detect)
+def handler(event, context):
+    mangum_handler = Mangum(app, lifespan="off")
+    return mangum_handler(event, context)
+
+# WORKING (Vercel detects via AST analysis)
+from mangum import Mangum
+from app.main import app
+handler = Mangum(app, lifespan="off")  # Module-level variable!
+```
+**Why**: Vercel's build system performs static AST analysis to find serverless function exports. Module-level variable assignment is required for automatic detection.
+
+### 3. Graceful Health Check Degradation
 - Health check returns 200 OK even when database is down
 - Service status: "healthy" → "degraded" (not "unhealthy")
 - Enables monitoring during outages
 
-### 3. OCR Automatic Fallback
+### 4. OCR Automatic Fallback
 - Try pdfplumber first for PDFs
 - Trigger OCR if extracted text < 100 characters
 - Handles multi-page PDFs with mixed content
 
-### 4. Storage Abstraction
+### 5. Storage Abstraction
 - `USE_DATABASE` flag controls persistence
 - `StorageAdapter` provides unified interface
 - Seamless migration from in-memory to database
@@ -172,16 +187,22 @@ def get_engine():
 ## Critical Gotchas
 
 ### Serverless Functions (Vercel/AWS Lambda)
-**Rule**: Never initialize heavy resources at module import time
+
+**Rule #1**: Never initialize heavy resources at module import time
 - ❌ DON'T: `engine = create_engine(...)  # At import`
 - ✅ DO: `def get_engine(): if not engine: engine = create_engine(...)`
+
+**Rule #2**: Handler must be module-level variable for function detection
+- ❌ DON'T: `def handler(event, context): ...`  # Function definition
+- ✅ DO: `handler = Mangum(app, lifespan="off")`  # Module-level variable
 
 **Why**:
 - Faster cold starts
 - Function can start even when dependencies are down
 - Better debugging (can see actual errors)
+- Vercel requires AST-visible exports for detection
 
-### Vercel Deployment
+### Vercel Deployment Gotchas
 - Legacy `builds` array causes schema validation failures
 - Modern Vercel uses minimal config with automatic detection
 - Schema validation happens BEFORE deployment
@@ -198,9 +219,9 @@ def get_engine():
 
 | Document | Purpose |
 |----------|---------|
+| `docs/BUG-FIX-18-LAZY-DATABASE-INITIALIZATION.md` | Lazy DB + function detection fix |
 | `docs/PROGRESS.md` | Progress tracking |
 | `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance fix |
-| `docs/BUG-FIX-18-LAZY-DATABASE-INITIALIZATION.md` | Lazy initialization implementation |
 | `docs/DEPLOYMENT-TROUBLESHOOTING.md` | Deployment troubleshooting guide |
 | `docs/DATABASE_SETUP.md` | Database setup guide |
 | `docs/SUPABASE_SETUP.md` | Supabase-specific setup |
@@ -209,7 +230,7 @@ def get_engine():
 
 **Context Generated**: 2026-02-23
 **Claude Model**: Sonnet 4.5
-**Project Status**: MVP + Database + Serverless Optimization (Deployment Configuration Issue)
+**Project Status**: MVP + Database + Serverless Ready (Bug Fix #18 Complete)
 
 ---
 
