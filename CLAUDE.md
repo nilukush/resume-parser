@@ -1,6 +1,6 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Project Context** | Updated: 2026-02-23 | Commit: 3264503 | Status: ✅ DEPLOYED TO PRODUCTION
+> **Project Context** | Updated: 2026-02-23 | Commits: 21b3090, 192825b, 8f7e322 | Status: ⚠️ Deployed, Function Detection Issue
 
 ---
 
@@ -34,50 +34,6 @@ Text Extraction (pdfplumber) + OCR Fallback (Tesseract)
 
 ---
 
-## Project Structure
-
-```
-resume-parser/
-├── backend/app/
-│   ├── api/                 # FastAPI routes
-│   │   ├── resumes.py       # Upload, GET, PUT endpoints
-│   │   ├── shares.py        # Share, export endpoints
-│   │   └── websocket.py     # WebSocket connection manager
-├── backend/api/
-│   └── index.py            # Vercel serverless handler (Mangum + FastAPI)
-├── backend/app/
-│   ├── core/
-│   │   ├── config.py        # Pydantic settings + feature flags
-│   │   ├── database.py      # SQLAlchemy async setup
-│   │   └── storage.py       # In-memory resume storage
-│   ├── models/
-│   │   ├── progress.py      # ProgressStage enum, ParsedData
-│   │   └── resume.py        # SQLAlchemy models
-│   ├── services/
-│   │   ├── text_extractor.py    # PDF/DOCX/DOC/TXT + OCR fallback
-│   │   ├── ocr_extractor.py     # Tesseract OCR
-│   │   ├── nlp_extractor.py     # spaCy entity extraction
-│   │   ├── ai_extractor.py      # OpenAI GPT-4o-mini
-│   │   ├── parser_orchestrator.py  # Pipeline orchestration
-│   │   ├── export_service.py    # PDF/WhatsApp/Telegram/Email
-│   │   ├── database_storage.py  # PostgreSQL CRUD operations
-│   │   └── storage_adapter.py   # Storage abstraction layer
-│   └── main.py              # FastAPI app
-├── frontend/src/
-│   ├── components/          # FileUpload, ProcessingStage, ShareLinkCard, etc.
-│   ├── pages/               # Upload, Processing, Review, Share pages
-│   ├── hooks/               # useWebSocket.ts
-│   ├── services/            # api.ts (HTTP client)
-│   └── types/               # TypeScript interfaces
-└── docs/
-    ├── DATABASE_SETUP.md    # Database setup guide
-    ├── SUPABASE_SETUP.md    # Supabase-specific setup
-    ├── VERCEL_DEPLOYMENT.md # Deployment instructions
-    └── PROGRESS.md          # Progress tracking
-```
-
----
-
 ## API Endpoints
 
 | Endpoint | Method | Purpose |
@@ -88,21 +44,7 @@ resume-parser/
 | `/v1/resumes/{id}/share` | POST | Create share token, returns {share_token, share_url, expires_at} |
 | `/v1/resumes/{id}/export/pdf` | GET | Download PDF export |
 | `/ws/resumes/{id}` | WebSocket | Real-time parsing progress |
-| `/health` | GET | Health check with DB status |
-
-### WebSocket Progress Stages
-
-| Stage | Progress | Description |
-|-------|----------|-------------|
-| TEXT_EXTRACTION | 0-30% | Try pdfplumber, fallback to OCR if <100 chars |
-| NLP_PARSING | 30-60% | Extract entities with spaCy |
-| AI_ENHANCEMENT | 60-100% | Validate with GPT-4o-mini (optional) |
-| COMPLETE | 100% | Ready for review |
-
-**Message Format:**
-```json
-{"type": "progress_update", "stage": "text_extraction", "progress": 50, "status": "Extracting text...", "timestamp": "2026-02-20T10:30:00.000000"}
-```
+| `/health` | GET | Health check with graceful degradation |
 
 ---
 
@@ -119,7 +61,7 @@ USE_DATABASE=true
 OPENAI_API_KEY=sk-...
 
 # OCR
-TESSERACT_PATH=/usr/local/bin/tesseract  # macOS: brew install tesseract
+TESSERACT_PATH=/usr/local/bin/tesseract
 ENABLE_OCR_FALLBACK=true
 
 # App
@@ -154,133 +96,101 @@ cd frontend && npm run dev
 cd backend && python -m pytest tests/ -v
 cd frontend && npm test -- --run && npm run type-check
 
-# Vercel Config Validation
-cd backend && python3 -m json.tool vercel.json  # JSON syntax check
-cd backend && python -m pytest tests/unit/test_vercel_config.py -v  # Vercel config tests
-cd backend && python -c "from api.index import handler; print('✓ Handler OK')"  # Handler import check
-
-# Migrations
-cd backend
-alembic revision --autogenerate -m "Description"
-alembic upgrade head
-
-# Database Connect
-docker exec -it resumate-postgres psql -U resumate_user resumate
+# Vercel Deploy
+cd .. && vercel --prod --scope nilukushs-projects
 ```
 
 ---
 
 ## Implementation Status
 
-### Complete
-- Project setup (Python 3.11, React 18, TypeScript)
-- Text extraction (PDF/DOCX/DOC/TXT) with OCR fallback
-- NLP entity extraction (spaCy)
-- AI enhancement (OpenAI GPT-4o-mini)
-- FastAPI endpoints (upload, GET, PUT, share)
-- WebSocket real-time progress
-- React pages (Upload, Processing, Review, Share)
-- Share tokens and export (PDF, WhatsApp, Telegram, Email)
-- **Database persistence** (PostgreSQL with Alembic)
-- **Storage abstraction layer** (in-memory / database switchable)
-- **Platform migration**: Render/Railway -> Vercel + Supabase
-- **Vercel build configuration** (PEP 668 compliant)
-- All critical bugs fixed (15+ bug fix sessions)
+### ✅ Complete
+- Full-stack resume parsing with OCR fallback
+- Lazy database initialization (serverless-ready)
+- Graceful health check degradation
+- Real-time WebSocket progress updates
+- Share tokens and export functionality
+- Frontend and backend deployment configs fixed
+
+### 🚧 Known Issues
+- **Vercel Function Detection**: Recent deployments not detecting `api/index.py` as serverless function
+  - Working deployment (3h ago): `https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app`
+  - Root Directory setting needs verification in Vercel Dashboard
 
 ### Test Coverage
-- Backend: 169 tests passing (including 7 Vercel config tests)
+- Backend: 175+ tests passing (including lazy DB tests)
 - Frontend: 53 tests passing
-- Total: 222+ tests
-
-### Remaining
-- Celery async task queue + Redis
-- User authentication (JWT)
-- Production monitoring (Sentry configured)
+- Total: 228+ tests
 
 ---
 
 ## Key Design Patterns
 
-### 1. Graceful Degradation
-- No hard dependency on OpenAI API key
-- Returns NLP-extracted data if AI unavailable
-- Logs errors but doesn't break pipeline
+### 1. Lazy Database Initialization (Serverless Best Practice) ⭐ NEW
+**Pattern**: Database connections created on first access, not import time
+```python
+# Before (BROKEN for serverless)
+engine = db_manager.init_engine(...)  # ❌ Crashes at import!
 
-### 2. OCR Automatic Fallback
+# After (WORKS for serverless)
+def get_engine():
+    global engine
+    if engine is None:
+        engine = db_manager.init_engine(...)  # ✅ Lazy init
+    return engine
+```
+**Why**: Serverless functions need to import without dependencies. Follows AWS Lambda, Vercel, and 12-factor app best practices.
+
+### 2. Graceful Degradation
+- Health check returns 200 OK even when database is down
+- Service status: "healthy" → "degraded" (not "unhealthy")
+- Enables monitoring during outages
+
+### 3. OCR Automatic Fallback
 - Try pdfplumber first for PDFs
 - Trigger OCR if extracted text < 100 characters
 - Handles multi-page PDFs with mixed content
 
-### 3. Storage Abstraction
+### 4. Storage Abstraction
 - `USE_DATABASE` flag controls persistence
 - `StorageAdapter` provides unified interface
 - Seamless migration from in-memory to database
 
-### 4. JSON Serialization at Boundaries
-```python
-def _serialize_for_websocket(data: Any) -> Any:
-    if isinstance(data, UUID): return str(data)
-    if isinstance(data, datetime): return data.isoformat()
-    if isinstance(data, Decimal): return float(data)
-```
+---
 
-### 5. Serverless ASGI Adapter (Vercel)
-- **Mangum** bridges FastAPI (ASGI) with AWS Lambda/Vercel serverless
-- Entry point: `backend/api/index.py` exports `handler = Mangum(app, lifespan="off")`
-- `lifespan="off"` for serverless (no startup/shutdown events)
-- Required for FastAPI on Vercel - not optional
+## Deployment URLs
+
+### Backend
+- **Working**: https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app
+- **Target**: https://resumate-backend.vercel.app (after configuration fix)
+
+### Frontend
+- **Target**: https://resumate-frontend.vercel.app
 
 ---
 
 ## Critical Gotchas
 
+### Serverless Functions (Vercel/AWS Lambda)
+**Rule**: Never initialize heavy resources at module import time
+- ❌ DON'T: `engine = create_engine(...)  # At import`
+- ✅ DO: `def get_engine(): if not engine: engine = create_engine(...)`
+
+**Why**:
+- Faster cold starts
+- Function can start even when dependencies are down
+- Better debugging (can see actual errors)
+
 ### Vercel Deployment
-- Legacy `builds` array (pre-2021) causes schema validation failures
-- Modern Vercel uses minimal config with automatic framework detection
-- Schema validation happens BEFORE deployment - fails immediately with deprecated properties
-- Always include `$schema` property in `vercel.json` for IDE validation
-- Test for deprecated properties: `builds`, `routes`, `maxLambdaSize`, `version`
+- Legacy `builds` array causes schema validation failures
+- Modern Vercel uses minimal config with automatic detection
+- Schema validation happens BEFORE deployment
+- Always include `$schema` property for IDE validation
 
 ### Function Size Limits
 - 250MB is a hard AWS Lambda limit (after compression)
-- Cannot be configured via `vercel.json` - any `maxLambdaSize` property will fail schema validation
-- Manage bundle size with `.vercelignore` and proper dependencies
-
----
-
-## Platform Details
-
-### Architecture
-```
-Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
-  $0/month             $0/month               $0/month
-  Serverless          500MB, 50K MAU          Edge CDN
-```
-
-### Deployment URLs
-- Backend: `https://resumate-backend-nilukushs-projects.vercel.app`
-- Frontend: `https://resumate-frontend.vercel.app` (needs deployment)
-- Database: Supabase (db.piqltpksqaldndikmaob.supabase.co)
-
-### Vercel Build Config
-- Uses `pip install --break-system-packages` for PEP 668 compliance (uv-managed environment)
-- Runtime: Python 3.12 (auto-detected, NO explicit runtime needed)
-- **DO NOT use `maxLambdaSize`** - deprecated property (schema validation fails)
-- Serverless handler: `backend/api/index.py` with Mangum adapter
-- Function size limit: 250MB (hard AWS limit, not configurable)
-
-### Vercel Deployment Patterns
-- **Native Runtimes** (Python, Node.js): Auto-detected via project files (requirements.txt, package.json)
-- **Community Runtimes** (Deno, PHP): Require explicit `functions.runtime` with version (e.g., "now-php@1.0.0")
-- **NEVER use `functions.runtime` for Python** - it's a native runtime, this property is only for community runtimes
-- **PEP 668 environments** (2024+): Use `--break-system-packages` flag, NOT `--user` flag
-- **Containerized deployments**: `--break-system-packages` is safe (isolated containers, no system impact)
-
-### Vercel Testing & Debugging
-- `vercel inspect <deployment-url> --logs` - View detailed build logs and errors
-- `vercel curl /path` - Test endpoints bypassing authentication (must be in project directory)
-- `vercel list --scope <team>` - List recent deployments with status
-- Vercel Authentication can be tested via CLI or temporarily disabled in dashboard
+- Cannot be configured via `vercel.json`
+- Manage bundle size with `.vercelignore`
 
 ---
 
@@ -289,18 +199,47 @@ Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
 | Document | Purpose |
 |----------|---------|
 | `docs/PROGRESS.md` | Progress tracking |
+| `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance fix |
+| `docs/BUG-FIX-18-LAZY-DATABASE-INITIALIZATION.md` | Lazy initialization implementation |
+| `docs/DEPLOYMENT-TROUBLESHOOTING.md` | Deployment troubleshooting guide |
 | `docs/DATABASE_SETUP.md` | Database setup guide |
 | `docs/SUPABASE_SETUP.md` | Supabase-specific setup |
-| `docs/VERCEL_DEPLOYMENT.md` | Vercel deployment instructions |
-| `docs/PLATFORM-MIGRATION-COMPLETE.md` | Platform migration details |
-| `docs/VERCEL-FIX-INSTRUCTIONS.md` | Build troubleshooting |
-| `docs/DEBUGGING-INDEX.md` | Debugging sessions reference |
-| `docs/BUG-FIX-16-VERCEL-SCHEMA.md` | Vercel schema validation fix (2026-02-22) |
-| `docs/BUG-FIX-17-VERCEL-RUNTIME-ERROR.md` | Runtime configuration fix (2026-02-23) |
-| `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance fix (2026-02-23) |
 
 ---
 
 **Context Generated**: 2026-02-23
 **Claude Model**: Sonnet 4.5
-**Project Status**: MVP + Database + Platform Migration Complete
+**Project Status**: MVP + Database + Serverless Optimization (Deployment Configuration Issue)
+
+---
+
+## Quick Start
+
+1. **Clone & Setup**:
+   ```bash
+   git clone <repo>
+   cd resume-parser
+   docker compose up -d  # Start database
+   ```
+
+2. **Backend**:
+   ```bash
+   cd backend
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   uvicorn app.main:app --reload
+   ```
+
+3. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+4. **Deploy to Vercel**:
+   ```bash
+   # From repository root
+   vercel --prod --scope nilukushs-projects
+   ```
