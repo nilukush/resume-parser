@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pip install --user -r requirements.txt",
-  "installCommand": "pip install --user -r requirements.txt",
+  "buildCommand": "pip install --break-system-packages -r requirements.txt",
+  "installCommand": "pip install --break-system-packages -r requirements.txt",
   "framework": null
 }
