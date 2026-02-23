@@ -1,6 +1,6 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Project Context** | Updated: 2026-02-22 | Commit: bda8e90 | Status: MVP + DB + Platform Migration Complete
+> **Project Context** | Updated: 2026-02-23 | Commit: 3264503 | Status: ✅ DEPLOYED TO PRODUCTION
 
 ---
 
@@ -258,16 +258,29 @@ Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
 ```
 
 ### Deployment URLs
-- Backend: `https://resumate-backend.vercel.app`
-- Frontend: `https://resumate-frontend.vercel.app`
+- Backend: `https://resumate-backend-nilukushs-projects.vercel.app`
+- Frontend: `https://resumate-frontend.vercel.app` (needs deployment)
 - Database: Supabase (db.piqltpksqaldndikmaob.supabase.co)
 
 ### Vercel Build Config
-- Uses `pip install --user` for PEP 668 compliance
+- Uses `pip install --break-system-packages` for PEP 668 compliance (uv-managed environment)
+- Runtime: Python 3.12 (auto-detected, NO explicit runtime needed)
 - **DO NOT use `maxLambdaSize`** - deprecated property (schema validation fails)
-- Runtime: Python 3.11
 - Serverless handler: `backend/api/index.py` with Mangum adapter
 - Function size limit: 250MB (hard AWS limit, not configurable)
+
+### Vercel Deployment Patterns
+- **Native Runtimes** (Python, Node.js): Auto-detected via project files (requirements.txt, package.json)
+- **Community Runtimes** (Deno, PHP): Require explicit `functions.runtime` with version (e.g., "now-php@1.0.0")
+- **NEVER use `functions.runtime` for Python** - it's a native runtime, this property is only for community runtimes
+- **PEP 668 environments** (2024+): Use `--break-system-packages` flag, NOT `--user` flag
+- **Containerized deployments**: `--break-system-packages` is safe (isolated containers, no system impact)
+
+### Vercel Testing & Debugging
+- `vercel inspect <deployment-url> --logs` - View detailed build logs and errors
+- `vercel curl /path` - Test endpoints bypassing authentication (must be in project directory)
+- `vercel list --scope <team>` - List recent deployments with status
+- Vercel Authentication can be tested via CLI or temporarily disabled in dashboard
 
 ---
 
@@ -283,6 +296,8 @@ Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
 | `docs/VERCEL-FIX-INSTRUCTIONS.md` | Build troubleshooting |
 | `docs/DEBUGGING-INDEX.md` | Debugging sessions reference |
 | `docs/BUG-FIX-16-VERCEL-SCHEMA.md` | Vercel schema validation fix (2026-02-22) |
+| `docs/BUG-FIX-17-VERCEL-RUNTIME-ERROR.md` | Runtime configuration fix (2026-02-23) |
+| `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance fix (2026-02-23) |
 
 ---
 
