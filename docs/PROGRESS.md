@@ -18,94 +18,156 @@
 
 ## LATEST CHANGES (2026-02-23)
 
-### 🎉 SUCCESSFUL DEPLOYMENT TO PRODUCTION ✅
+### 🎉 Bug Fix #18: Lazy Database Initialization & Function Detection ✅
 
 **Commits:**
-- `4a86fe9` - Bug Fix #17: Removed invalid `functions.runtime` property
-- `3264503` - Bug Fix #17b: Fixed PEP 668 compliance with `--break-system-packages`
+- `8f7e322` - feat: implement lazy database initialization for serverless
+- `192825b` - feat: add detailed error logging to Vercel handler ⚠️ Broke function detection
+- `1d9fd7b` - fix: restore module-level handler for Vercel function detection ✅
+- `b222bd5` - docs: update Bug Fix #18 with root cause analysis
 
-**Problems Solved:**
+**Critical Issues Solved:**
 
-**Bug Fix #17 - Invalid Runtime Configuration:**
-- ❌ Error: "Function Runtimes must have a valid version, for example `now-php@1.0.0`"
-- ❌ Cause: Commit `a5ca7d0` incorrectly added `functions.runtime: "python3.11"` property
-- ❌ Why Wrong: Python is a **native Vercel runtime** (auto-detected), not a community runtime
-- ✅ Solution: Removed invalid `functions` property, let Vercel auto-detect Python 3.12
+**Issue #1: Serverless Function Crash (FUNCTION_INVOCATION_FAILED)**
+- ❌ Error: Serverless function crashes before handling any requests
+- ❌ Root Cause: Database engine initialized at module import time in `app/core/database.py:175`
+- ❌ Impact: Health check returns 503/500, entire application inaccessible
+- ✅ Solution: Implemented **lazy database initialization** pattern
 
-**Bug Fix #17b - PEP 668 Compliance:**
-- ❌ Error: "externally-managed-environment" - pip rejects `--user` flag
-- ❌ Cause: Vercel uses **uv** package manager (externally-managed Python environment)
-- ❌ Why Failed: PEP 668 (Python 3.11+) prohibits `--user` flag in externally-managed environments
-- ✅ Solution: Replaced `--user` with `--break-system-packages` flag
+**Lazy Initialization Pattern:**
+```python
+# BEFORE (BROKEN - import-time connection)
+db_manager = DatabaseManager()
+engine = db_manager.init_engine(echo=settings.is_development)  # ❌ Crashes at import!
 
-**Results:**
-- ✅ **Deployment Status: READY**
-- ✅ Build Time: 60 seconds
-- ✅ Python Version: 3.12 (auto-detected)
-- ✅ URL: https://resumate-backend-nilukushs-projects.vercel.app
-- ✅ Configuration: Minimal, PEP 668 compliant
+# AFTER (WORKING - lazy initialization)
+db_manager = DatabaseManager()
+engine: Optional[AsyncEngine] = None
+AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
 
-**Deployment URLs:**
-- Production: https://resumate-backend-nilukushs-projects.vercel.app
-- Alias: https://resume-parser-woad.vercel.app
-
-**Key Configuration Changes:**
-```json
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pip install --break-system-packages -r requirements.txt",
-  "installCommand": "pip install --break-system-packages -r requirements.txt",
-  "framework": null
-}
+def get_engine() -> AsyncEngine:
+    """Get or create the database engine (lazy initialization)."""
+    global engine, AsyncSessionLocal
+    if engine is None:
+        engine = db_manager.init_engine(echo=settings.is_development)
+        AsyncSessionLocal = db_manager.session_factory
+    return engine
 ```
 
-**Technical Details:**
-- Removed invalid `functions.runtime` property (native Python doesn't need it)
-- Updated pip flags for PEP 668 compliance (externally-managed environments)
-- Vercel auto-detects Python runtime via `requirements.txt`
-- Uses latest stable Python version (3.12)
+**Benefits:**
+- ✅ Serverless best practice (AWS Lambda, Vercel, 12-factor app)
+- ✅ Faster cold starts (no database connection during import)
+- ✅ Better observability (can see actual errors instead of generic crash)
+- ✅ Graceful degradation (service runs even when database is down)
+- ✅ Testable (can mock lazy initialization)
+
+**Issue #2: Vercel Function Detection Failure**
+- ❌ Error: Recent deployments stopped detecting `api/index.py` as serverless function
+- ❌ Evidence: Old deployment (3h ago) shows `λ api/index (88.85MB)`, recent shows empty builds
+- ❌ Root Cause: Handler changed from module-level variable to function in commit `192825b`
+- ✅ Solution: Restored module-level handler pattern
+
+**Function Detection Pattern:**
+```python
+# BROKEN (commit 192825b)
+def handler(event, context):  # ❌ Function definition
+    # ... creates handler inside function
+    mangum_handler = Mangum(app, lifespan="off")
+    return mangum_handler(event, context)
+
+# WORKING (restored)
+from mangum import Mangum
+from app.main import app
+
+handler = Mangum(app, lifespan="off")  # ✅ Module-level variable!
+```
+
+**Why This Matters:**
+Vercel's automatic function detection looks for a **module-level variable** named `handler`. When wrapped in a function, Vercel cannot detect it during build time, resulting in empty builds.
+
+**Health Check Graceful Degradation:**
+```python
+@app.get("/health")
+async def health_check():
+    health_status = {"status": "healthy", "database": "unknown"}
+
+    try:
+        from app.core.database import get_session_factory
+        factory = get_session_factory()  # Lazy init
+        async with factory() as db:
+            await db.execute(text("SELECT 1"))
+            health_status["database"] = "connected"
+    except Exception as e:
+        # Database unavailable, but service still running
+        health_status["database"] = "disconnected"
+        health_status["status"] = "degraded"  # Not "unhealthy"
+        health_status["database_error"] = str(e)
+
+    return JSONResponse(content=health_status, status_code=200)  # Always 200!
+```
+
+**Test Coverage:**
+Added `tests/unit/test_lazy_database.py` with 6 comprehensive tests:
+- ✅ Module import without database
+- ✅ Engine is None at import
+- ✅ Lazy initialization on first access
+- ✅ Engine caching behavior
+- ✅ Health check graceful degradation
+- ✅ Health check with database
+
+**Frontend Configuration Fixed:**
+- ✅ Fixed `frontend/vercel.json` (env vars must be strings, not objects)
+- ✅ Updated `frontend/.env.production` (HTTPS/WSS protocols, production URLs)
 
 **Documentation Created:**
-- [Bug Fix #17: Runtime Configuration Error](docs/BUG-FIX-17-VERCEL-RUNTIME-ERROR.md)
-- [Bug Fix #17b: PEP 668 Compliance](docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md)
+- [Bug Fix #18: Lazy Database Initialization](docs/BUG-FIX-18-LAZY-DATABASE-INITIALIZATION.md)
 
 ---
 
 ## DEPLOYMENT STATUS ✅
 
-**Current State:** ✅ **LIVE IN PRODUCTION**
+**Current State:** 🔄 **READY FOR DEPLOYMENT**
 
-- Backend URL: https://resumate-backend-nilukushs-projects.vercel.app
-- Status: Ready
+- **Latest Fix:** Bug Fix #18 - Lazy database initialization + function detection
+- **Commits:** `8f7e322`, `192825b`, `1d9fd7b`, `b222bd5`
+- **Status:** Code ready, pending deployment to verify function detection
+- **Expected Behavior:** Functions should now be detected correctly (module-level handler)
+
+**Previous Deployments:**
+- Backend URL: https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app
+- Status: Function detection broken (empty builds)
+- Working Deployment (3h ago): https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app
 - Environment: Production
 - Python Version: 3.12 (auto-detected)
 - Build Time: 60 seconds
-- Health Endpoint: /health (Vercel Authentication enabled)
 
 **Testing the Deployment:**
 
-Option 1 - Using Vercel CLI (Recommended):
+After deployment, verify function detection:
 ```bash
+# Expected: Should show λ api/index (XX MB) in Functions section
 cd backend
-vercel curl /health
+vercel ls
 ```
 
-Option 2 - Direct API (after disabling protection):
+Test health endpoint:
 ```bash
-# Note: Deployment has Vercel Authentication enabled
-# You can disable it in Vercel Dashboard → Settings → Protection
-curl https://resumate-backend-nilukushs-projects.vercel.app/health
+# Expected: 200 OK with degraded status (database may be disconnected)
+curl https://resumate-backend-4yl17dd45-nilukushs-projects.vercel.app/health
 ```
 
 **Expected Response:**
 ```json
 {
-  "status": "healthy",
-  "database": "connected",
+  "status": "degraded",
+  "database": "disconnected",
   "version": "1.0.0",
-  "environment": "production"
+  "environment": "production",
+  "database_error": "Database connection error details..."
 }
 ```
+
+Note: "degraded" status is expected and correct - the service is running even if database is unavailable.
 
 ---
 
