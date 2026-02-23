@@ -75,7 +75,7 @@ async def websocket_endpoint(websocket: WebSocket, resume_id: str):
 
 
 @app.get("/health", tags=["health"])
-async def health_check(db: AsyncSession = Depends(get_db)):
+async def health_check():
     """
     Health check endpoint for monitoring and load balancers.
 
@@ -83,12 +83,14 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     This endpoint is used by Render, load balancers, and monitoring systems
     to verify the API is running and healthy.
 
+    Implements graceful degradation - returns 200 OK even if database is
+    unavailable, allowing the service to be monitored during outages.
+
     Returns:
         JSONResponse: Health status with database connectivity check
 
     Status Codes:
-        200: System is healthy (database connected)
-        503: System is unhealthy (database disconnected)
+        200: System is running (database connected or degraded)
     """
     from sqlalchemy import text
     from fastapi.responses import JSONResponse
@@ -102,18 +104,22 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "timestamp": datetime.utcnow().isoformat()
     }
 
-    # Check database connectivity
+    # Check database connectivity (optional - don't crash if unavailable)
     try:
-        # Simple query to verify database connection
-        await db.execute(text("SELECT 1"))
-        health_status["database"] = "connected"
+        # Try to get a database session using lazy initialization
+        from app.core.database import get_session_factory
+
+        factory = get_session_factory()
+        async with factory() as db:
+            # Simple query to verify database connection
+            await db.execute(text("SELECT 1"))
+            health_status["database"] = "connected"
     except Exception as e:
+        # Database is unavailable, but service is still running
         health_status["database"] = "disconnected"
-        health_status["status"] = "unhealthy"
+        health_status["status"] = "degraded"  # Not "unhealthy" - service is running!
         health_status["database_error"] = str(e)
-        logger.error(f"Health check failed: {e}")
+        logger.warning(f"Health check: database unavailable - {e}")
 
-    # Return appropriate status code
-    status_code = 200 if health_status["status"] == "healthy" else 503
-
-    return JSONResponse(content=health_status, status_code=status_code)
+    # Always return 200 - the service is running, even if degraded
+    return JSONResponse(content=health_status, status_code=200)

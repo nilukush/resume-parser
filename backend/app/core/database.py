@@ -169,14 +169,55 @@ class DatabaseManager:
 # Global database manager instance
 db_manager = DatabaseManager()
 
-# Create the engine and session factory (skip during migrations)
-# During Alembic migrations, we only need the Base metadata, not the engine
-if not IS_RUNNING_MIGRATION:
-    engine = db_manager.init_engine(echo=settings.is_development)
-    AsyncSessionLocal = db_manager.session_factory
-else:
-    engine = None  # Not used during migrations
-    AsyncSessionLocal = None  # Not used during migrations
+# Lazy initialization: Engine and session factory are NOT created at import time.
+# They will be created on first access via get_engine() or get_session_factory().
+# This is critical for serverless functions to avoid import-time database connections.
+engine: Optional[AsyncEngine] = None
+AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
+
+
+def get_engine() -> AsyncEngine:
+    """
+    Get or create the database engine (lazy initialization).
+
+    This function implements lazy initialization - the database engine is only
+    created when first accessed, not at module import time. This is essential
+    for serverless functions to avoid startup failures when the database is
+    temporarily unavailable.
+
+    Returns:
+        AsyncEngine: The database engine instance.
+
+    Example:
+        from app.core.database import get_engine
+        engine = get_engine()  # Creates engine on first call
+    """
+    global engine, AsyncSessionLocal
+
+    if engine is None:
+        engine = db_manager.init_engine(echo=settings.is_development)
+        AsyncSessionLocal = db_manager.session_factory
+
+    return engine
+
+
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """
+    Get or create the session factory (lazy initialization).
+
+    Returns:
+        async_sessionmaker: The session factory for creating sessions.
+
+    Example:
+        from app.core.database import get_session_factory
+        factory = get_session_factory()  # Creates factory on first call
+    """
+    global AsyncSessionLocal
+
+    if AsyncSessionLocal is None:
+        get_engine()  # This will initialize both engine and factory
+
+    return AsyncSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -185,6 +226,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
     This function provides a database session to FastAPI route handlers.
     The session is automatically closed after the request is processed.
+    Uses lazy initialization to create the database engine on first access.
 
     Yields:
         AsyncSession: A database session for use in route handlers.
@@ -195,7 +237,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             result = await db.execute(select(Resume))
             return result.scalars().all()
     """
-    async with AsyncSessionLocal() as session:
+    # Lazy initialization: get_session_factory will create engine if needed
+    factory = get_session_factory()
+
+    async with factory() as session:
         try:
             yield session
         except Exception:
