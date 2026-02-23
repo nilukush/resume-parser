@@ -137,35 +137,50 @@ Added `tests/unit/test_lazy_database.py` with 6 tests:
 
 ## Deployment Status
 
-### ⚠️ Current Issue: Vercel Function Detection
+### ✅ Issue #1 Resolved: Vercel Function Detection (2026-02-23 15:45)
 
-**Problem:** Recent deployments stopped detecting `api/index.py` as a serverless function
+**Root Cause:** Handler was changed from module-level variable to function in commit `192825b`
 
-**Evidence:**
-- Old deployment (3h ago): Shows `λ api/index (88.85MB)` ✅
-- Recent deployments: Show empty builds ❌
+**The Problem:**
+```python
+# BROKEN (commit 192825b)
+def handler(event, context):
+    # ... creates handler inside function
+    mangum_handler = Mangum(app, lifespan="off")
+    return mangum_handler(event, context)
+```
 
-**Likely Cause:** Vercel project configuration mismatch (Root Directory setting)
+**The Fix:**
+```python
+# WORKING (restored to original pattern)
+from mangum import Mangum
+from app.main import app
 
-**Resolution Required:**
-1. Check Vercel Dashboard → resumate-backend → Settings → General
-2. Verify Root Directory is set to `backend` (not `backend/backend`)
-3. Redeploy from parent directory
+handler = Mangum(app, lifespan="off")  # Module-level variable!
+```
+
+**Why This Matters:**
+- Vercel's automatic function detection looks for a **module-level variable** named `handler`
+- When the handler is wrapped in a function, Vercel cannot detect it
+- The detailed error logging inadvertently broke the detection mechanism
+
+**Resolution:** Reverted to module-level handler pattern. Vercel will now detect the function correctly.
 
 ---
 
 ## Commits
 
 - `8f7e322`: feat: implement lazy database initialization for serverless
-- `192825b`: feat: add detailed error logging to Vercel handler
+- `192825b`: feat: add detailed error logging to Vercel handler ⚠️ Broke function detection
+- `1d9fd7b`: fix: restore module-level handler for Vercel function detection ✅
 - `de48f91`: fix: configure frontend deployment and update backend for Vercel
 
 ---
 
 ## Next Steps
 
-1. Fix Vercel project Root Directory setting
-2. Redeploy to verify functions are detected
+1. ✅ Fixed Vercel function detection (module-level handler)
+2. Deploy to Vercel and verify functions are detected
 3. Test `/health` endpoint returns 200 OK
 4. Deploy frontend
 5. Test complete user flow
