@@ -9,6 +9,9 @@ venv/
 ENV/
 .venv
 
+# uv.lock (prefer requirements.txt for Vercel)
+uv.lock
+
 # Node
 node_modules/
 dist/

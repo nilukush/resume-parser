@@ -14,13 +14,13 @@ dependencies = [
     "asyncpg>=0.30.0",
     "psycopg2-binary==2.9.9",
     "alembic==1.13.1",
-    # OCR and Document Processing
+    # OCR and Document Processing (OCR removed - not compatible with Lambda)
     "pdfplumber==0.10.3",
     "PyPDF2==3.0.1",
     "python-docx==1.1.0",
-    "pytesseract==0.3.10",
+    # "pytesseract==0.3.10",  # REMOVED: Requires tesseract binary unavailable on Lambda
     "Pillow>=10.4.0",
-    "pdf2image==1.16.3",
+    # "pdf2image==1.16.3",  # REMOVED: Requires poppler binary unavailable on Lambda
     # NLP and AI
     "spacy==3.7.2",
     "openai==1.10.0",

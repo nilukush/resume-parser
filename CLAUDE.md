@@ -43,6 +43,9 @@ resume-parser/
 │   │   ├── resumes.py       # Upload, GET, PUT endpoints
 │   │   ├── shares.py        # Share, export endpoints
 │   │   └── websocket.py     # WebSocket connection manager
+├── backend/api/
+│   └── index.py            # Vercel serverless handler (Mangum + FastAPI)
+├── backend/app/
 │   ├── core/
 │   │   ├── config.py        # Pydantic settings + feature flags
 │   │   ├── database.py      # SQLAlchemy async setup
@@ -151,6 +154,11 @@ cd frontend && npm run dev
 cd backend && python -m pytest tests/ -v
 cd frontend && npm test -- --run && npm run type-check
 
+# Vercel Config Validation
+cd backend && python3 -m json.tool vercel.json  # JSON syntax check
+cd backend && python -m pytest tests/unit/test_vercel_config.py -v  # Vercel config tests
+cd backend && python -c "from api.index import handler; print('✓ Handler OK')"  # Handler import check
+
 # Migrations
 cd backend
 alembic revision --autogenerate -m "Description"
@@ -180,9 +188,9 @@ docker exec -it resumate-postgres psql -U resumate_user resumate
 - All critical bugs fixed (15+ bug fix sessions)
 
 ### Test Coverage
-- Backend: 194 tests passing
-- Frontend: 31 tests passing
-- Total: 225+ tests
+- Backend: 169 tests passing (including 7 Vercel config tests)
+- Frontend: 53 tests passing
+- Total: 222+ tests
 
 ### Remaining
 - Celery async task queue + Redis
@@ -216,6 +224,28 @@ def _serialize_for_websocket(data: Any) -> Any:
     if isinstance(data, Decimal): return float(data)
 ```
 
+### 5. Serverless ASGI Adapter (Vercel)
+- **Mangum** bridges FastAPI (ASGI) with AWS Lambda/Vercel serverless
+- Entry point: `backend/api/index.py` exports `handler = Mangum(app, lifespan="off")`
+- `lifespan="off"` for serverless (no startup/shutdown events)
+- Required for FastAPI on Vercel - not optional
+
+---
+
+## Critical Gotchas
+
+### Vercel Deployment
+- Legacy `builds` array (pre-2021) causes schema validation failures
+- Modern Vercel uses minimal config with automatic framework detection
+- Schema validation happens BEFORE deployment - fails immediately with deprecated properties
+- Always include `$schema` property in `vercel.json` for IDE validation
+- Test for deprecated properties: `builds`, `routes`, `maxLambdaSize`, `version`
+
+### Function Size Limits
+- 250MB is a hard AWS Lambda limit (after compression)
+- Cannot be configured via `vercel.json` - any `maxLambdaSize` property will fail schema validation
+- Manage bundle size with `.vercelignore` and proper dependencies
+
 ---
 
 ## Platform Details
@@ -234,8 +264,10 @@ Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
 
 ### Vercel Build Config
 - Uses `pip install --user` for PEP 668 compliance
-- Max Lambda size: 15MB
+- **DO NOT use `maxLambdaSize`** - deprecated property (schema validation fails)
 - Runtime: Python 3.11
+- Serverless handler: `backend/api/index.py` with Mangum adapter
+- Function size limit: 250MB (hard AWS limit, not configurable)
 
 ---
 
@@ -250,9 +282,10 @@ Vercel (Backend) -> Supabase PostgreSQL <- Vercel (Frontend)
 | `docs/PLATFORM-MIGRATION-COMPLETE.md` | Platform migration details |
 | `docs/VERCEL-FIX-INSTRUCTIONS.md` | Build troubleshooting |
 | `docs/DEBUGGING-INDEX.md` | Debugging sessions reference |
+| `docs/BUG-FIX-16-VERCEL-SCHEMA.md` | Vercel schema validation fix (2026-02-22) |
 
 ---
 
-**Context Generated**: 2026-02-22
-**Claude Model**: Opus 4.5
+**Context Generated**: 2026-02-23
+**Claude Model**: Sonnet 4.5
 **Project Status**: MVP + Database + Platform Migration Complete

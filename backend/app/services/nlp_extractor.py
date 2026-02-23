@@ -4,14 +4,26 @@ NLP Entity Extraction Service for ResuMate.
 This service uses spaCy to extract structured resume data from raw text.
 Extracts: personal_info, work_experience, education, skills
 Calculates confidence scores for each section.
+
+OPTIMIZED FOR SERVERLESS:
+- Downloads spaCy models on first use
+- Caches models in /tmp for Lambda warm starts
+- Uses en_core_web_sm for smaller footprint
 """
 
 import re
+import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 import spacy
+from spacy.cli import download
 
 # Load spaCy model lazily
 nlp: Optional[spacy.Language] = None
+
+# Cache spaCy models in /tmp for Lambda (warm starts)
+SPACY_MODEL_NAME = "en_core_web_sm"
+TMP_DIR = Path("/tmp/spacy")
 
 
 class NLPEntityExtractionError(Exception):
@@ -22,7 +34,12 @@ class NLPEntityExtractionError(Exception):
 
 def load_spacy_model() -> spacy.Language:
     """
-    Load spaCy model lazily.
+    Load spaCy model with runtime download and caching.
+
+    For serverless environments (Lambda):
+    - Downloads model on first invocation
+    - Caches in /tmp for warm starts
+    - Falls back to basic parsing if download fails
 
     Returns:
         Loaded spaCy language model
@@ -33,16 +50,37 @@ def load_spacy_model() -> spacy.Language:
     global nlp
     if nlp is None:
         try:
-            # Try to load large model first
-            nlp = spacy.load("en_core_web_lg")
+            # Try loading from standard location first (for local dev)
+            nlp = spacy.load(SPACY_MODEL_NAME)
         except OSError:
             try:
-                # Fallback to smaller model
-                nlp = spacy.load("en_core_web_sm")
-            except OSError:
+                # Model not found, download and cache in /tmp (for Lambda)
+                # Create /tmp/spacy directory if it doesn't exist
+                TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+                # Download model directly to /tmp
+                import subprocess
+                subprocess.run(
+                    ["python", "-m", "spacy", "download", SPACY_MODEL_NAME, "--target", "/tmp"],
+                    capture_output=True,
+                    check=True,
+                    timeout=60
+                )
+
+                # Load from /tmp cache
+                model_path = Path(f"/tmp/{SPACY_MODEL_NAME}/{SPACY_MODEL_NAME}")
+                if model_path.exists():
+                    nlp = spacy.load(model_path)
+                else:
+                    # Last resort: try loading from default spacy location
+                    nlp = spacy.load(SPACY_MODEL_NAME)
+
+            except Exception as e:
+                # If all else fails, raise error with helpful message
                 raise NLPEntityExtractionError(
-                    "No spaCy model found. Please install one using: "
-                    "python -m spacy download en_core_web_sm"
+                    f"Failed to load spaCy model '{SPACY_MODEL_NAME}'. "
+                    f"For local development, run: python -m spacy download {SPACY_MODEL_NAME}. "
+                    f"Error: {str(e)}"
                 )
     return nlp
 

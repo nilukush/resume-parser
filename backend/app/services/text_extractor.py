@@ -2,9 +2,12 @@
 Text Extraction Service for ResuMate.
 
 This service extracts text from various document formats including:
-- PDF files (using pdfplumber with OCR fallback)
+- PDF files (using pdfplumber)
 - DOCX/DOC files (using python-docx)
 - TXT files (plain text)
+
+NOTE: OCR fallback is DISABLED in serverless environments.
+Image-based PDFs will raise OCRNotAvailableError.
 
 All extraction functions are async for consistency with the async architecture.
 """
@@ -16,7 +19,7 @@ from pathlib import Path
 import pdfplumber
 from docx import Document
 
-from app.services.ocr_extractor import extract_text_with_ocr
+from app.services.ocr_extractor import extract_text_with_ocr, OCRNotAvailableError
 
 
 class TextExtractionError(Exception):

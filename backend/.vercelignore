@@ -1,3 +1,6 @@
+# Exclude uv.lock (use requirements.txt instead)
+uv.lock
+
 # Exclude entire app directory since we use api/index.py
 app/
 
@@ -36,4 +39,3 @@ supabase/
 # Exclude development config
 .env.local
 .env.*.local
-# Updated for deployment
