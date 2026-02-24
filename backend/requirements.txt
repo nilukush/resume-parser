@@ -37,8 +37,9 @@ thinc>=8.3.4,<9.0.0
 openai==1.10.0
 
 # Task Queue
-celery==5.3.6
-redis==5.0.1
+# REMOVED 2026-02-24: Not used in codebase (~42 MB savings)
+# celery==5.3.6
+# redis==5.0.1
 
 # Security and Validation
 # CRITICAL: pydantic>=2.7.4 required for Python 3.12.4 compatibility (recursive_guard fix)
@@ -56,8 +57,10 @@ aiofiles==23.2.1
 httpx==0.26.0
 
 # Monitoring
-sentry-sdk==1.40.0
+# REMOVED 2026-02-24: Not initialized in codebase (~12 MB savings)
+# sentry-sdk==1.40.0
 
 # PDF Generation
 reportlab==4.0.7
+# Cache invalidation timestamp: 1771944127-v2 (Python 3.12 requirement bump)
 # Cache invalidation timestamp: 1771944127

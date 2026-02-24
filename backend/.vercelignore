@@ -1,29 +1,91 @@
-# Exclude development files
+# Vercel Deployment Exclusions
+# Optimized 2026-02-24 to reduce bundle size below 250MB target
+
+# Exclude Python cache files
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
 
-# Exclude tests
+# Exclude tests and test artifacts (saves ~1.5 MB)
 tests/
 .pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
 
 # Exclude documentation
 docs/
 *.md
+!README.md
 
-# Exclude database files
+# Exclude database migrations (not needed in serverless)
 alembic/
+alembic.ini
 
 # Exclude backup files
 *.backup
+*.bak
+*.tmp
 
 # Exclude virtual environments
 .venv/
 venv/
+env/
+ENV/
 
-# Exclude egg-info
+# Exclude egg-info and dist
 *.egg-info/
+dist/
+build/
+*.egg
 
 # Exclude development config
 .env.local
 .env.*.local
+.env.development
+.env.test
+
+# Exclude scripts and development tools
+scripts/
+dev/
+*.dev.js
+*.dev.ts
+
+# Exclude IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Exclude development logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Exclude spaCy models (downloaded at runtime)
+app/nlp/
+
+# Exclude test fixtures and data
+tests/fixtures/
+tests/data/
+fixtures/
+
+# Exclude Node modules (if any frontend build artifacts)
+node_modules/
+
+# Exclude development type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Exclude excluded paths patterns
+**/__pycache__/
+**/*.pyc
+**/*.pyo
