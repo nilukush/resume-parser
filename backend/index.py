@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 # Add backend directory to Python path for imports
-# When deploying from monorepo root, api/index.py needs to find app.main
-backend_dir = Path(__file__).parent.parent
+# backend/index.py needs to find app.main in the same directory
+backend_dir = Path(__file__).parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
