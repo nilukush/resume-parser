@@ -21,8 +21,8 @@ dependencies = [
     # "pytesseract==0.3.10",  # REMOVED: Requires tesseract binary unavailable on Lambda
     "Pillow>=10.4.0",
     # "pdf2image==1.16.3",  # REMOVED: Requires poppler binary unavailable on Lambda
-    # NLP and AI
-    "spacy==3.7.2",
+    # NLP and AI (spaCy 3.8+ required for Python 3.12 compatibility)
+    "spacy>=3.8.0,<4.0.0",
     "openai==1.10.0",
     # Task Queue
     "celery==5.3.6",
