@@ -2,15 +2,21 @@
 Vercel serverless function entry point for ResuMate API.
 
 This file wraps the FastAPI application with Mangum to work
-with Vercel's serverless functions (AWS Lambda).
-
-CRITICAL: The handler must be a module-level variable for Vercel's
-function detection to work correctly. Do NOT wrap this in a function.
+with Vercel's serverless functions.
 """
+
+import sys
+from pathlib import Path
+
+# Add backend directory to Python path for imports
+# When deploying from monorepo root, api/index.py needs to find app.main
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
 from mangum import Mangum
 from app.main import app
 
-# Wrap FastAPI app with Mangum for AWS Lambda compatibility
-# NOTE: This must be a module-level variable named "handler"
+# Vercel requires a module-level 'handler' variable
+# This wraps the FastAPI ASGI app for AWS Lambda compatibility
 handler = Mangum(app, lifespan="off")

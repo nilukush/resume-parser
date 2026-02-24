@@ -1,9 +1,3 @@
-# Exclude uv.lock (use requirements.txt instead)
-uv.lock
-
-# Exclude entire app directory since we use api/index.py
-app/
-
 # Exclude development files
 __pycache__/
 *.pyc
@@ -20,9 +14,6 @@ docs/
 # Exclude database files
 alembic/
 
-# Exclude frontend files (if any)
-frontend/
-
 # Exclude backup files
 *.backup
 
@@ -32,9 +23,6 @@ venv/
 
 # Exclude egg-info
 *.egg-info/
-
-# Exclude supabase local files
-supabase/
 
 # Exclude development config
 .env.local

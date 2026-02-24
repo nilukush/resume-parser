@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pip install --break-system-packages -r requirements.txt",
   "installCommand": "pip install --break-system-packages -r requirements.txt",
-  "framework": null
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "/api/index"
+    }
+  ]
 }

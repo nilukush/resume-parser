@@ -1,5 +1,6 @@
 # ResuMate Backend - Production Dependencies
 # Optimized for Vercel serverless deployment
+# Cache invalidation 2026-02-24-14:05
 
 # FastAPI and server
 fastapi==0.109.0
@@ -22,7 +23,10 @@ Pillow>=10.4.0
 # pytesseract==0.3.10  # REMOVED: Requires tesseract binary unavailable on Lambda
 
 # NLP and AI (spaCy without models - downloaded at runtime)
-spacy==3.7.2
+# numpy 1.26.4 for Python 3.12 compatibility (has prebuilt wheels)
+numpy==1.26.4
+# spaCy 3.8+ required for Pydantic 2.x compatibility
+spacy>=3.8.0,<4.0.0
 openai==1.10.0
 
 # Task Queue

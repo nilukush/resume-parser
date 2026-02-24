@@ -15,6 +15,7 @@ import re
 import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+
 import spacy
 from spacy.cli import download
 
