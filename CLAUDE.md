@@ -1,12 +1,12 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Updated**: 2026-02-24 | **Status**: Bug Fix #23 Fixed, Awaiting Vercel Cache Expiration | **Tests**: 228+
+> **Updated**: 2026-02-24 | **Status**: Bug Fix #24 Complete, Awaiting Vercel Runtime Cache Expiration (~2026-02-25) | **Tests**: 228+
 
 ---
 
 ## Overview
 
-ResuMate extracts structured data from resumes using **OCR -> NLP -> AI Enhancement**. Users upload resumes, get real-time parsing progress, review/edit extracted data, and share results.
+ResuMate extracts structured data from resumes using **OCR -> NLP -> AI Enhancement**.
 
 ```
 Text Extraction (pdfplumber) + OCR Fallback (Tesseract)
@@ -54,7 +54,9 @@ cd frontend && npm install && npm run dev
 cd backend && python -m pytest tests/ -v
 cd frontend && npm test -- --run && npm run type-check
 
-# Deploy
+# Deploy (CRITICAL: Commit changes first - Vercel deploys from git!)
+git add . && git commit -m "feat: description"
+git push origin main
 vercel --prod --scope nilukushs-projects
 ```
 
@@ -104,17 +106,8 @@ VITE_WS_BASE_URL=wss://resumate-backend.vercel.app/ws
 
 ---
 
-## Implementation Status
+## Recent Fixes (#18-#24)
 
-### Complete Features
-- Full-stack resume parsing with OCR fallback
-- Lazy database initialization (serverless-ready)
-- Graceful health check degradation
-- Real-time WebSocket progress updates
-- Share tokens and export functionality
-- Frontend and backend deployment configs
-
-### Recent Fixes
 | # | Issue | Resolution |
 |---|-------|------------|
 | #18 | Function detection + lazy DB | Module-level handler + lazy init pattern |
@@ -122,12 +115,10 @@ VITE_WS_BASE_URL=wss://resumate-backend.vercel.app/ws
 | #20 | Pydantic v2 compatibility | Added confection>=0.1.4, thinc>=8.3.4 |
 | #21 | Python 3.12.4 + Pydantic compatibility | Upgraded to pydantic>=2.7.4 |
 | #22 | Mangum 0.17.0 + Python 3.12 | Upgraded to mangum>=0.21.0 in requirements.txt |
-| #23 | Mangum version mismatch | Fixed pyproject.toml mangum>=0.21.0, awaiting Vercel runtime cache expiration |
+| #23 | Mangum version mismatch | Fixed pyproject.toml mangum>=0.21.0 |
+| #24 | Bundle size 401MB (runtime cache trigger) | Removed Celery, Redis, Sentry (-54MB) |
 
-### Test Coverage
-- Backend: 175+ tests passing
-- Frontend: 53 tests passing
-- Total: 228+ tests
+**Current Status**: Bundle 394.92 MB, awaiting Vercel runtime cache expiration. TypeError persists until cache refreshes.
 
 ---
 
@@ -136,7 +127,7 @@ VITE_WS_BASE_URL=wss://resumate-backend.vercel.app/ws
 ### 1. Lazy Database Initialization
 Serverless functions must NOT initialize resources at import time.
 ```python
-# BROKEN for serverless
+# BROKEN
 engine = db_manager.init_engine(...)  # Crashes at import!
 
 # WORKING
@@ -150,7 +141,7 @@ def get_engine():
 ### 2. Vercel Function Detection
 Handler must be module-level variable for AST detection.
 ```python
-# BROKEN - Vercel cannot detect
+# BROKEN
 def handler(event, context):
     return Mangum(app, lifespan="off")(event, context)
 
@@ -158,8 +149,7 @@ def handler(event, context):
 handler = Mangum(app, lifespan="off")  # Module-level variable
 ```
 
-### 3. Dependency Version Compatibility
-Python 3.12 requires specific versions:
+### 3. Python 3.12 Dependency Versions
 ```python
 numpy==1.26.4        # Prebuilt wheels for Python 3.12
 spacy>=3.8.0,<4.0.0  # Native Pydantic 2.x support
@@ -168,22 +158,13 @@ mangum>=0.21.0,<1.0.0 # Python 3.12 compatible
 confection>=0.1.4    # Pydantic v2 support for spaCy
 thinc>=8.3.4         # Pydantic v2 support for spaCy
 ```
-**Always keep pyproject.toml and requirements.txt in sync.**
 
-### 4. Vercel Runtime Cache
-When bundle exceeds 250MB (current: ~401MB), Vercel caches runtime dependencies for 24-48 hours.
-- **Build cache**: Cleared by `vercel --force`
-- **Runtime cache**: NO CLI command to clear, must wait 24-48h or contact support
-- **Best practice**: Reduce bundle below 250MB to avoid runtime caching entirely
-
-### 5. Graceful Health Degradation
-Health check returns 200 OK even when database is down.
+### 4. Graceful Health Degradation
 ```python
-health_status["status"] = "degraded"  # NOT "unhealthy"
+health_status["status"] = "degraded"  # NOT "unhealthy" - always return 200 OK
 ```
 
-### 6. PEP 668 Compliance
-Modern Python (3.11+) uses externally-managed environments.
+### 5. PEP 668 Compliance
 ```bash
 # Vercel/serverless containers
 pip install --break-system-packages -r requirements.txt
@@ -191,77 +172,108 @@ pip install --break-system-packages -r requirements.txt
 
 ---
 
+## Vercel Deployment
+
+### Deployment Workflow
+1. **Code changes**: Edit files locally
+2. **Test locally**: `python -m pytest` or `npm test`
+3. **Commit**: `git add . && git commit -m "description"`
+4. **Push**: `git push origin main` ← **Vercel deploys from git, not local files!**
+5. **Deploy**: `vercel --prod --scope nilukushs-projects`
+6. **Verify**: `vercel inspect <url> --wait && curl <url>/health`
+
+### Current Bundle Status
+| Metric | Value | Status |
+|--------|-------|--------|
+| Bundle size | 394.92 MB | ⚠️ Above 250MB threshold |
+| Function size | 79.18 MB | ✅ Excellent |
+| Runtime cache | Active | Expires ~2026-02-25 |
+
+### Key Rules
+- **Monorepo**: Run `vercel` from repo root, not subdirectories
+- **Runtime cache**: Bundle >250MB triggers 24-48h cache (NO CLI clear available)
+- **Build cache**: Cleared by `vercel --force` (does NOT affect runtime cache)
+- **Projects**: `backend/` and `frontend/` are separate Vercel projects
+
+### Debugging Commands
+```bash
+# Inspect deployment (bundle size, build logs)
+vercel inspect <deployment-url> --wait
+
+# Stream real-time logs (runtime errors)
+vercel logs <deployment-url>
+
+# Test health endpoint
+curl -s <deployment-url>/health
+
+# Monitor long-running deployments
+vercel inspect <url> --wait  # Shows real-time build progress
+
+# Check for TypeError in logs
+vercel logs <url> --n 50 | grep -i "TypeError\|issubclass"
+
+# Verify unused dependencies before removal
+grep -r "import celery\|from celery" backend/app/  # Check if actually used
+```
+
+### Cache Status Indicators
+| Log Message | Meaning |
+|-------------|---------|
+| "Using cached runtime dependencies" | Stale cache (wait 24-48h) |
+| "Installing runtime dependencies" | Fresh install (good!) |
+| "Skipping build cache" | Build cache bypassed |
+
+### Bundle Size Targets
+| Bundle Size | Runtime Cache | Cold Start | Recommendation |
+|-------------|---------------|------------|----------------|
+| <250MB | No | ~2s | ✅ Target |
+| 250-400MB | Yes (24-48h) | ~5s | ⚠️ Reduce dependencies |
+| >400MB | Yes (24-48h) | ~10s+ | ❌ Must optimize |
+
+---
+
+## Dependency Management
+
+| Rule | Details |
+|------|---------|
+| Sync files | Always keep `pyproject.toml` and `requirements.txt` synchronized |
+| Vercel priority | Vercel reads `pyproject.toml` first |
+| Version specifiers | Use `>=` in pyproject.toml, `==` in requirements.txt |
+| Verification | Compare Mangum/Pydantic/spaCy versions across both files before deploying |
+| Mismatch symptoms | TypeError in Vercel runtime code (vc_init.py), not your code |
+| Sync tools | Use `pip-compile` or Poetry for automatic consistency |
+| **Before removing dependencies** | Verify usage: `grep -r "import <lib>" backend/app/` |
+| **Git workflow** | Vercel deploys from git - commit & push before deploying! |
+
+---
+
+## Common Issues
+
+| Symptom | Root Cause | Fix |
+|---------|------------|-----|
+| TypeError in vc_init.py | Old Mangum version in runtime cache | Update pyproject.toml, wait 24-48h |
+| FUNCTION_INVOCATION_FAILED | Runtime cache incompatibility | Same as above |
+| ModuleNotFoundError | Missing dependency | Check pyproject.toml, redeploy |
+| Build succeeds, invocation fails | Bundle size >250MB with stale cache | Reduce bundle or wait for expiration |
+| **Vercel deploying old code** | **Forgot to commit/push git changes** | **`git add . && git commit && git push`** |
+| **Changes not reflected** | **Vercel caches git repo** | **Force new deployment with `vercel --force`** |
+
+---
+
 ## Deployment URLs
 
 | Service | URL |
 |---------|-----|
-| Backend (target) | https://resumate-backend.vercel.app |
+| Backend | https://resumate-backend.vercel.app |
 | Frontend | https://resumate-frontend.vercel.app |
 
 ---
 
-## Critical Gotchas
+## Test Coverage
 
-### Serverless Functions (Vercel/AWS Lambda)
-| Rule | Don't | Do |
-|------|-------|-----|
-| Init | `engine = create_engine(...)` | `def get_engine(): if not engine: ...` |
-| Handler | `def handler(event, context):` | `handler = Mangum(app, lifespan="off")` |
-
-### Vercel Deployment
-- **Monorepo**: Run `vercel` from repo root, not subdirectories
-- **Function size check**: `vercel inspect <url>` shows bundle size (target: <250MB)
-- **Runtime logs**: `vercel logs <url>` streams real-time errors
-- **Cache indicators**: "Using cached runtime dependencies" = stale cache, "Installing runtime dependencies" = fresh
-- Bundle size >250MB triggers runtime dependency caching (24-48h expiration, no CLI clear)
-- `vercel --force` clears build cache, NOT runtime cache
-- `backend/` and `frontend/` are separate Vercel projects
-
-### Dependency Management
-- Always keep pyproject.toml and requirements.txt synchronized
-- Vercel prioritizes pyproject.toml over requirements.txt
-- Use `>=` in pyproject.toml, `==` in requirements.txt for exact versions
-- **Version mismatch symptoms**: TypeError in Vercel runtime code (not your code)
-- **Verification**: Compare Mangum/Pydantic/spaCy versions across both files before deploying
-- **Sync tools**: Use `pip-compile` or Poetry to maintain consistency automatically
-
----
-
-## Quick Reference: Vercel Debugging
-
-### Check Deployment Health
-```bash
-# 1. Inspect deployment (shows function size, build logs)
-vercel inspect <deployment-url> --wait
-
-# 2. Stream real-time logs (shows runtime errors)
-vercel logs <deployment-url>
-
-# 3. Test health endpoint
-curl -s <deployment-url>/health
-```
-
-### Cache Status Indicators
-| Log Message | Meaning | Action |
-|-------------|---------|--------|
-| "Using cached runtime dependencies" | Old cached Python packages | Wait 24-48h or reduce bundle size |
-| "Installing runtime dependencies" | Fresh installation | Good! Proceed with testing |
-| "Skipping build cache" | Build cache bypassed | Expected with `--force` flag |
-
-### Function Size Targets
-| Size | Runtime Cache | Cold Start | Recommendation |
-|------|---------------|------------|----------------|
-| <250MB | No | Fast (~2s) | ✅ Target |
-| 250-400MB | Yes (24-48h) | Medium (~5s) | ⚠️ Reduce dependencies |
-| >400MB | Yes (24-48h) | Slow (~10s+) | ❌ Must optimize |
-
-### Common Issues & Quick Fixes
-| Symptom | Root Cause | Fix |
-|---------|------------|-----|
-| TypeError in vc_init.py | Old Mangum version in cache | Update pyproject.toml, wait 24-48h |
-| FUNCTION_INVOCATION_FAILED | Runtime cache incompatibility | Same as above |
-| ModuleNotFoundError | Missing dependency | Check pyproject.toml, redeploy |
-| Build succeeds, invocation fails | Bundle size >250MB with old cache | Reduce bundle or wait for expiration |
+- Backend: 175+ tests passing
+- Frontend: 53 tests passing
+- Total: 228+ tests
 
 ---
 
@@ -270,13 +282,22 @@ curl -s <deployment-url>/health
 | Document | Purpose |
 |----------|---------|
 | `docs/PROGRESS.md` | Progress tracking with all bug fixes |
+| `docs/BUG-FIX-24-BUNDLE-OPTIMIZATION.md` | Celery/Redis/Sentry removal |
 | `docs/BUG-FIX-23-VERCEL-RUNTIME-CACHE.md` | Mangum version mismatch fix |
-| `docs/BUG-FIX-22-MANGUM-021-PYTHON312-COMPATIBILITY.md` | Mangum upgrade |
-| `docs/BUG-FIX-21-PYTHON-312-4-PYDANTIC-274-COMPATIBILITY.md` | Pydantic upgrade |
-| `docs/BUG-FIX-20-PYDANTIC-V2-SPACY-COMPATIBILITY.md` | Pydantic v2 support |
-| `docs/BUG-FIX-19-PYTHON-312-SPACY-COMPATIBILITY.md` | spaCy 3.8+ upgrade |
-| `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance |
-| `docs/BUG-FIX-17-VERCEL-RUNTIME-ERROR.md` | Runtime configuration fix |
-| `docs/DEPLOYMENT-TROUBLESHOOTING.md` | Deployment guide |
+| `docs/DEPLOYMENT-TROUBLESHOOTING.md` | Full deployment guide |
 | `docs/DATABASE_SETUP.md` | Database setup |
 | `docs/SUPABASE_SETUP.md` | Supabase-specific setup |
+
+---
+
+## Session Learnings (2026-02-24)
+
+**Vercel Git Workflow**: Always commit and push before deploying - Vercel reads from git repository, not local filesystem
+
+**Dependency Removal Safety**: Before removing dependencies, verify they're unused: `grep -r "import <lib>" backend/app/`
+
+**Runtime vs Build Cache**: `vercel --force` clears build cache only; runtime cache (24-48h expiration) has no CLI clear command when bundle >250MB
+
+**Background Deployment Monitoring**: Use `vercel inspect <url> --wait` to monitor long-running deployments in real-time
+
+**Bundle Size Strategy**: Target <250MB to avoid runtime caching. If unavoidable, optimize `.vercelignore` and remove heavy dependencies (Celery/Redis/Sentry = ~54MB savings potential)
