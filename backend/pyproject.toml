@@ -23,6 +23,10 @@ dependencies = [
     # "pdf2image==1.16.3",  # REMOVED: Requires poppler binary unavailable on Lambda
     # NLP and AI (spaCy 3.8+ required for Python 3.12 compatibility)
     "spacy>=3.8.0,<4.0.0",
+    # CRITICAL: confection>=0.1.4 enables Pydantic v2 support for spaCy
+    "confection>=0.1.4,<1.0.0",
+    # CRITICAL: thinc>=8.3.4 required for spaCy + Pydantic v2 compatibility
+    "thinc>=8.3.4,<9.0.0",
     "openai==1.10.0",
     # Task Queue
     "celery==5.3.6",

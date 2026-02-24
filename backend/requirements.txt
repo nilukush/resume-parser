@@ -1,6 +1,7 @@
 # ResuMate Backend - Production Dependencies
 # Optimized for Vercel serverless deployment
-# Cache invalidation 2026-02-24-14:05
+# Bug Fix #20: Added confection>=0.1.4, thinc>=8.3.4 for Pydantic v2 compatibility
+# Cache invalidation 2026-02-24-14:30
 
 # FastAPI and server
 fastapi==0.109.0
@@ -27,6 +28,10 @@ Pillow>=10.4.0
 numpy==1.26.4
 # spaCy 3.8+ required for Pydantic 2.x compatibility
 spacy>=3.8.0,<4.0.0
+# CRITICAL: confection>=0.1.4 enables Pydantic v2 support for spaCy
+confection>=0.1.4,<1.0.0
+# CRITICAL: thinc>=8.3.4 required for spaCy + Pydantic v2 compatibility
+thinc>=8.3.4,<9.0.0
 openai==1.10.0
 
 # Task Queue
