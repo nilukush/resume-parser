@@ -230,6 +230,82 @@ Python 3.12.0 → 3.12.4 introduced **breaking changes** to the typing system. A
 
 **Next Steps**:
 1. ✅ Updated `requirements.txt` and `pyproject.toml`
-2. ⏳ Wait for Vercel runtime cache to expire (24-48 hours)
-3. ⏳ Deploy and verify fix resolves the ForwardRef error
-4. ⏳ Update PROGRESS.md with completion status
+2. ❌ **BLOCKED**: Vercel runtime cache (401.66 MB) ignores requirements.txt changes
+3. ⚠️ **Deployment Status**: Build succeeds but runtime uses cached Pydantic 2.5.3
+4. 🔧 **SOLUTION REQUIRED**: Force cache invalidation (see below)
+
+---
+
+## CRITICAL: Vercel Runtime Cache Issue
+
+### Current Situation (2026-02-24 15:05 GST)
+
+**Build Output**:
+```
+Building: Bundle size (401.66 MB) exceeds limit. Enabling runtime dependency installation.
+Building: Successfully installed pydantic-2.12.5 ✅
+```
+
+**Runtime Error**:
+```
+/tmp/_vc_deps/lib/python3.12/site-packages/pydantic/v1/typing.py:66
+TypeError: ForwardRef._evaluate() missing 1 required keyword-only argument: 'recursive_guard'
+```
+
+**Problem**:
+- Build-time installation: Pydantic 2.12.5 ✅
+- Runtime cache: Pydantic 2.5.3 (old cache) ❌
+- Function execution uses `/tmp/_vc_deps/` cache, not build artifacts
+
+### Why This Happens
+
+When bundle > 250MB:
+1. Vercel installs dependencies at build time (works correctly)
+2. Vercel caches runtime dependencies separately in `/tmp/_vc_deps/`
+3. This cache persists for 24-48 hours, IGNORING requirements.txt changes
+4. Serverless functions execute using cached dependencies, not build artifacts
+
+### Solutions
+
+#### Option A: Contact Vercel Support (FASTEST) ⭐ RECOMMENDED
+
+1. Go to [Vercel Support](https://vercel.com/support)
+2. Submit ticket: "Request manual runtime cache invalidation"
+3. Explain: Bundle > 250MB, requirements.txt changes not taking effect
+4. Include deployment URL: `https://resumate-backend-3gnnkf71h-nilukushs-projects.vercel.app`
+5. They can invalidate cache immediately (1-2 hours)
+
+#### Option B: Wait for Automatic Expiration (24-48 hours)
+
+- Runtime cache expires automatically after 24-48 hours
+- After expiration, redeploy to pick up new requirements
+- **Not ideal**: Leaves deployment broken for 1-2 days
+
+#### Option C: Reduce Bundle Size Below 250MB (Long-term Fix)
+
+Remove unnecessary dependencies from `requirements.txt`:
+
+```diff
+# Task Queue (not needed for serverless)
+- celery==5.3.6
+- redis==5.0.1
+
+# Monitoring (optional, can add later)
+- sentry-sdk==1.40.0
+```
+
+This reduces bundle size, bypassing runtime caching entirely.
+
+---
+
+### Deployment Status
+
+| Layer | Status | Version |
+|-------|--------|---------|
+| Build-time installation | ✅ Success | Pydantic 2.12.5 |
+| Runtime cache | ❌ Stale | Pydantic 2.5.3 |
+| Function execution | ❌ Failed | TypeError |
+
+---
+
+**IMMEDIATE ACTION REQUIRED**: Contact Vercel Support for manual cache invalidation

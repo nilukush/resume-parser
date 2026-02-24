@@ -2,13 +2,14 @@
 # Optimized for Vercel serverless deployment
 # Bug Fix #20: Added confection>=0.1.4, thinc>=8.3.4 for Pydantic v2 compatibility
 # Bug Fix #21: Upgraded pydantic to 2.7.4 for Python 3.12.4 compatibility
-# Cache invalidation 2026-02-24-15:00
+# Bug Fix #22: Upgraded mangum to 0.21.0+ for Python 3.12 compatibility (Deployment TypeError fix)
+# Cache invalidation 2026-02-24-16:30
 
 # FastAPI and server
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-mangum==0.17.0
+mangum>=0.21.0,<1.0.0
 
 # Database
 sqlalchemy==2.0.25
