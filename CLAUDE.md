@@ -1,6 +1,6 @@
 # ResuMate - AI-Powered Resume Parser
 
-> **Project Context** | Updated: 2026-02-23 | Commits: 1d9fd7b, b222bd5, 550cb96 | Status: ✅ Function Detection Fixed, Ready for Deployment
+> **Project Context** | Updated: 2026-02-24 | Commits: 1d9fd7b, 0b080d2 | Status: 🔄 Bug Fix #19 Code Complete, Awaiting Cache Expiration
 
 ---
 
@@ -22,9 +22,9 @@ Text Extraction (pdfplumber) + OCR Fallback (Tesseract)
 
 | Component | Technology |
 |-----------|------------|
-| Backend | FastAPI 0.109.0, Python 3.11 |
+| Backend | FastAPI 0.109.0, Python 3.12 |
 | OCR | Tesseract + pdf2image 1.16.3 |
-| NLP | spaCy 3.7.2 (en_core_web_sm/lg) |
+| NLP | spaCy 3.8+ (Pydantic 2.x compatible, en_core_web_sm/lg) |
 | AI | OpenAI 1.10.0 (GPT-4o-mini) |
 | Database | Supabase PostgreSQL + async SQLAlchemy |
 | Frontend | React 18 + TypeScript 5.3 + Vite 5.0 |
@@ -116,6 +116,10 @@ cd .. && vercel --prod --scope nilukushs-projects
 - ✅ **Resolved**: Function detection issue (Bug Fix #18, commit 1d9fd7b)
   - Root cause: Handler was function instead of module-level variable
   - Fixed: Restored `handler = Mangum(app, lifespan="off")` pattern
+- ⏳ **Pending**: Vercel runtime cache expiration (Bug Fix #19, commit 0b080d2)
+  - Code fixed (spaCy 3.8+ + Pydantic 2.x compatible)
+  - Awaiting 24-48h for Vercel cache to refresh
+  - Bundle size: 407.70 MB (exceeds 250MB limit, forces runtime installation)
 
 ### Test Coverage
 - Backend: 175+ tests passing (including lazy DB tests)
@@ -141,7 +145,34 @@ def get_engine():
 ```
 **Why**: Serverless functions need to import without dependencies. Follows AWS Lambda, Vercel, and 12-factor app best practices.
 
-### 2. Vercel Function Detection (Critical Pattern) ⭐ NEW
+### 3. Dependency Version Compatibility (Critical) ⭐ NEW
+**Pattern**: spaCy, numpy, and Pydantic versions must be mutually compatible
+```python
+# REQUIREMENTS.TXT PATTERN
+numpy==1.26.4        # Python 3.12 needs 1.26.4+ (has prebuilt wheels)
+spacy>=3.8.0,<4.0.0  # 3.8+ required for Pydantic 2.x compatibility
+pydantic==2.5.3       # spaCy 3.8+ supports Pydantic 2.x natively
+```
+**Why**:
+- spaCy 3.7.2 uses Pydantic v1 compatibility layer (incompatible with Pydantic 2.x)
+- spaCy 3.8+ has native Pydantic 2.x support (no compatibility layer needed)
+- numpy 1.24.4 lacks Python 3.12 wheels (causes build-from-source failures)
+- numpy 1.26.4+ has prebuilt wheels for Python 3.12
+
+### 4. Vercel Runtime Dependency Caching ⭐ NEW
+**Pattern**: Vercel caches runtime dependencies aggressively when bundle > 250MB
+```bash
+# SYMPTOM: Code changes don't take effect, old errors persist
+"Using cached runtime dependencies"
+
+# ROOT CAUSE: Bundle exceeds 250MB limit
+"Bundle size (407.70 MB) exceeds limit. Enabling runtime dependency installation."
+
+# SOLUTION: Wait 24-48h for cache expiration OR contact Vercel support
+```
+**Why**: Vercel's runtime cache persists across deployments when bundles exceed the 250MB threshold. Changing requirements.txt versions doesn't force cache refresh. Cache expires automatically in 24-48 hours.
+
+### 2. Vercel Function Detection (Critical Pattern)
 **Pattern**: Handler must be module-level variable, NOT a function
 ```python
 # BROKEN (Vercel cannot detect)
@@ -156,17 +187,17 @@ handler = Mangum(app, lifespan="off")  # Module-level variable!
 ```
 **Why**: Vercel's build system performs static AST analysis to find serverless function exports. Module-level variable assignment is required for automatic detection.
 
-### 3. Graceful Health Check Degradation
+### 5. Graceful Health Check Degradation
 - Health check returns 200 OK even when database is down
 - Service status: "healthy" → "degraded" (not "unhealthy")
 - Enables monitoring during outages
 
-### 4. OCR Automatic Fallback
+### 6. OCR Automatic Fallback
 - Try pdfplumber first for PDFs
 - Trigger OCR if extracted text < 100 characters
 - Handles multi-page PDFs with mixed content
 
-### 5. Storage Abstraction
+### 7. Storage Abstraction
 - `USE_DATABASE` flag controls persistence
 - `StorageAdapter` provides unified interface
 - Seamless migration from in-memory to database
@@ -207,11 +238,16 @@ handler = Mangum(app, lifespan="off")  # Module-level variable!
 - Modern Vercel uses minimal config with automatic detection
 - Schema validation happens BEFORE deployment
 - Always include `$schema` property for IDE validation
+- **Runtime dependency cache**: When bundle > 250MB, Vercel caches runtime deps for 24-48h
+- **Project structure**: `backend/` and `frontend/` are separate Vercel projects with own configs
+- **Cache invalidation**: Adding comments to requirements.txt doesn't force cache refresh
 
 ### Function Size Limits
 - 250MB is a hard AWS Lambda limit (after compression)
 - Cannot be configured via `vercel.json`
 - Manage bundle size with `.vercelignore`
+- **Current size**: 407.70 MB (triggers runtime installation with caching)
+- **Optimization target**: Remove Celery/Redis/Sentry to reduce below 250MB
 
 ---
 
@@ -220,7 +256,7 @@ handler = Mangum(app, lifespan="off")  # Module-level variable!
 | Document | Purpose |
 |----------|---------|
 | `docs/BUG-FIX-18-LAZY-DATABASE-INITIALIZATION.md` | Lazy DB + function detection fix |
-| `docs/PROGRESS.md` | Progress tracking |
+| `docs/PROGRESS.md` | Progress tracking (includes Bug Fix #19) |
 | `docs/BUG-FIX-17b-PEP-668-COMPLIANCE.md` | PEP 668 compliance fix |
 | `docs/DEPLOYMENT-TROUBLESHOOTING.md` | Deployment troubleshooting guide |
 | `docs/DATABASE_SETUP.md` | Database setup guide |
@@ -228,9 +264,9 @@ handler = Mangum(app, lifespan="off")  # Module-level variable!
 
 ---
 
-**Context Generated**: 2026-02-23
+**Context Generated**: 2026-02-24
 **Claude Model**: Sonnet 4.5
-**Project Status**: MVP + Database + Serverless Ready (Bug Fix #18 Complete)
+**Project Status**: MVP + Database + Serverless Ready (Bug Fix #19 Code Complete)
 
 ---
 
